@@ -99,7 +99,7 @@ func TestServePushesNewFrame(t *testing.T) {
 	fc := &frameStore{}
 	fc.set(nil, []byte("FRAME"))
 	s := &scriptedSession{reads: []readResult{{msg: pv3.Hello{}}, {msg: pv3.ImageAck{}}}}
-	serve(s, fc, &deviceStatus{}, func() {}, "test")
+	serve(s, fc, &deviceStatus{}, func(x, y int) {}, "test")
 
 	if len(s.writes) != 2 {
 		t.Fatalf("writes = %d, want 2 (ACK + frame)", len(s.writes))
@@ -142,7 +142,7 @@ func TestServePushesPartialAgainstBaseline(t *testing.T) {
 			fc.set(next, pv3.EncodeFramePacked(next))
 		}
 	}
-	serve(s, fc, &deviceStatus{}, func() {}, "test")
+	serve(s, fc, &deviceStatus{}, func(x, y int) {}, "test")
 
 	if len(s.writes) != 4 {
 		t.Fatalf("writes = %d, want 4 (ACK+full, ACK+partial)", len(s.writes))
@@ -164,7 +164,7 @@ func TestServeAckOnlyWhenUnchanged(t *testing.T) {
 	_, _, v, _ := fc.load()
 	fc.markSent(v) // already delivered
 	s := &scriptedSession{reads: []readResult{{msg: pv3.Hello{}}}}
-	serve(s, fc, &deviceStatus{}, func() {}, "test")
+	serve(s, fc, &deviceStatus{}, func(x, y int) {}, "test")
 
 	if len(s.writes) != 1 {
 		t.Fatalf("writes = %d, want 1 (ACK only, frame unchanged)", len(s.writes))
@@ -176,10 +176,14 @@ func TestServeTouchAdvances(t *testing.T) {
 	fc.set(nil, []byte("FRAME"))
 	touched := 0
 	s := &scriptedSession{reads: []readResult{{msg: pv3.Touch{X: 1, Y: 2}}, {msg: pv3.ImageAck{}}}}
-	serve(s, fc, &deviceStatus{}, func() { touched++ }, "test")
+	var gotX, gotY int
+	serve(s, fc, &deviceStatus{}, func(x, y int) { touched++; gotX, gotY = x, y }, "test")
 
 	if touched != 1 {
 		t.Fatalf("onTouch called %d times, want 1", touched)
+	}
+	if gotX != 1 || gotY != 2 {
+		t.Errorf("onTouch coords = (%d,%d), want (1,2)", gotX, gotY)
 	}
 }
 
@@ -191,7 +195,7 @@ func TestServeRecordsTelemetry(t *testing.T) {
 		{msg: pv3.Hello{Telemetry: &pv3.Telemetry{VoltageMv: 3676, RSSIMag: 54, BatteryPct: 20}}},
 		{msg: pv3.ImageAck{}},
 	}}
-	serve(s, fc, st, func() {}, "test")
+	serve(s, fc, st, func(x, y int) {}, "test")
 
 	h := http.Header{}
 	st.setHeaders(h)

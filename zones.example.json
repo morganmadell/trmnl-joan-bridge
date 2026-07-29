@@ -1,0 +1,38 @@
+{
+  "_comment": "Starting-point tap-zone config for the 3-page dashboard from Instructions.md. Copy to zones.json and adjust: the 'path' fields must match real Lovelace view URLs on your HA instance, and every rectangle here is a first guess — recalibrate against your actual device using DEBUG_SAVE_SCREENSHOTS and the container logs (they print every tap's coordinates) once you have physical hardware to test against.",
+
+  "pages": [
+    {
+      "name": "sensors",
+      "path": "/lovelace-joan/0",
+      "zones": [
+        {"x1": 0,   "y1": 0, "x2": 342,  "y2": 80, "action": {"page": "sensors"}},
+        {"x1": 342, "y1": 0, "x2": 683,  "y2": 80, "action": {"page": "controls"}},
+        {"x1": 683, "y1": 0, "x2": 1024, "y2": 80, "action": {"page": "graphs"}}
+      ]
+    },
+    {
+      "name": "controls",
+      "path": "/lovelace-joan/1",
+      "zones": [
+        {"x1": 0,   "y1": 0, "x2": 342,  "y2": 80, "action": {"page": "sensors"}},
+        {"x1": 342, "y1": 0, "x2": 683,  "y2": 80, "action": {"page": "controls"}},
+        {"x1": 683, "y1": 0, "x2": 1024, "y2": 80, "action": {"page": "graphs"}},
+
+        {"x1": 0,   "y1": 80,  "x2": 512,  "y2": 419, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.boardroom_tv"}},
+        {"x1": 512, "y1": 80,  "x2": 1024, "y2": 419, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.boardroom_tv_un85du6900fxzc"}},
+        {"x1": 0,   "y1": 419, "x2": 512,  "y2": 758, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.chromecast3441"}},
+        {"x1": 512, "y1": 419, "x2": 1024, "y2": 758, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.tv_samsung_8_series_82"}}
+      ]
+    },
+    {
+      "name": "graphs",
+      "path": "/lovelace-joan/2",
+      "zones": [
+        {"x1": 0,   "y1": 0, "x2": 342,  "y2": 80, "action": {"page": "sensors"}},
+        {"x1": 342, "y1": 0, "x2": 683,  "y2": 80, "action": {"page": "controls"}},
+        {"x1": 683, "y1": 0, "x2": 1024, "y2": 80, "action": {"page": "graphs"}}
+      ]
+    }
+  ]
+}

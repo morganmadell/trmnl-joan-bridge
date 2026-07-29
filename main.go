@@ -1,20 +1,39 @@
 // trmnl-joan-bridge: standalone PV3 server for Joan 6 e-ink display.
 //
-// Polls a TRMNL server for the current image, encodes it into a
-// Visionect PV3 frame, and serves it to Joan over TCP:11112.
-// The heartbeat loop keeps the connection alive between Joan's 3-minute hello cycles.
+// Fork note: adapted to drive the panel from a Home Assistant dashboard
+// (screenshotted with a headless Chromium — see ha_client.go/ha_render.go)
+// instead of TRMNL, while keeping TRMNL support available via -source=trmnl.
+// See Instructions.md ("Path C") and Protocol_Bypass_Research.md in the
+// parent joan_self_hosted project for the full story.
+//
+// Renders the current content source's image, encodes it into a Visionect
+// PV3 frame, and serves it to Joan over TCP:11112. The heartbeat loop keeps
+// the connection alive between Joan's 3-minute hello cycles, and a screen tap
+// is routed to the active content source (page switch / HA service call for
+// Home Assistant; playlist advance for TRMNL).
 //
 // The PV3 wire protocol — framing, message decode, frame encode, the session
-// ACK — lives in package pv3. This file is the application: TRMNL polling, the
-// frame cache, and the per-connection heartbeat loop.
+// ACK — lives in package pv3. This file is the application: the content
+// source selection, frame cache, and per-connection heartbeat loop.
 //
 // Configuration (env vars; flags override):
 //
+//	SOURCE            "ha" (default) or "trmnl"
+//	REFRESH_INTERVAL  Fallback re-render/re-fetch interval (default: 60s)
+//	LISTEN_ADDR       TCP address to bind (default: :11112)
+//
+//	Home Assistant mode (SOURCE=ha):
+//	HA_URL              Home Assistant base URL (e.g. http://10.218.10.81:8123)
+//	HA_TOKEN            Long-lived access token (Profile → Security)
+//	ZONES_FILE          Path to the page/tap-zone config (default: zones.json)
+//	CHROMIUM_BIN        Chromium executable name/path (default: chromium)
+//	RENDER_WAIT_MS      Time to let the dashboard load before screenshotting (default: 4000)
+//	DEBUG_SAVE_SCREENSHOTS  If set, a directory to save the latest render to for inspection
+//
+//	TRMNL mode (SOURCE=trmnl):
 //	TRMNL_SERVER      TRMNL base URL (e.g. http://192.168.1.210:2300)
 //	DEVICE_ID         Joan MAC address uppercase (e.g. 42:00:28:00:0D:51)
 //	ACCESS_TOKEN      TRMNL device access token
-//	REFRESH_INTERVAL  Fallback re-fetch interval if TRMNL omits refresh_rate (default: 60s)
-//	LISTEN_ADDR       TCP address to bind (default: :11112)
 package main
 
 import (
@@ -38,38 +57,62 @@ import (
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
+// contentSource is anything that can keep a frameStore filled with the
+// current image and react to a screen tap. haClient (default) renders a Home
+// Assistant dashboard; trmnlClient (source=trmnl) polls a TRMNL server.
+// main() picks one via -source/SOURCE and hands it to every connection.
+type contentSource interface {
+	refresh(fc *frameStore) error
+	loop(fc *frameStore)
+	onTouch(x, y int, fc *frameStore)
+}
+
 func main() {
+	source := flag.String("source", env("SOURCE", "ha"), `content source: "ha" (Home Assistant, default) or "trmnl"`)
+
+	// TRMNL-mode flags (only required when -source=trmnl).
 	trmnlServer := flag.String("trmnl-server", env("TRMNL_SERVER", ""), "TRMNL base URL (e.g. http://192.168.1.210:2300)")
 	deviceID := flag.String("device-id", env("DEVICE_ID", ""), "Joan MAC address uppercase (e.g. 42:00:28:00:0D:51)")
 	accessToken := flag.String("access-token", env("ACCESS_TOKEN", ""), "TRMNL device access token")
-	refresh := flag.Duration("refresh", envDuration("REFRESH_INTERVAL", 60*time.Second), "Fallback refresh interval when TRMNL omits refresh_rate")
+
+	refresh := flag.Duration("refresh", envDuration("REFRESH_INTERVAL", 60*time.Second), "Fallback refresh interval (HA: between unprompted re-renders; TRMNL: when it omits refresh_rate)")
 	addr := flag.String("addr", env("LISTEN_ADDR", ":11112"), "TCP listen address")
 	flag.Parse()
 
-	if *trmnlServer == "" || *deviceID == "" || *accessToken == "" {
-		log.Fatal("required: -trmnl-server, -device-id, -access-token")
-	}
-
 	fc := &frameStore{}
 	st := &deviceStatus{}
-	tc := &trmnlClient{server: *trmnlServer, deviceID: *deviceID, token: *accessToken, fallback: *refresh, status: st}
-	log.Printf("polling TRMNL at %s (device %s)", *trmnlServer, *deviceID)
+
+	var cs contentSource
+	switch *source {
+	case "ha":
+		cs = newHAClient(*refresh)
+		log.Print("content source: Home Assistant")
+	case "trmnl":
+		if *trmnlServer == "" || *deviceID == "" || *accessToken == "" {
+			log.Fatal("source=trmnl requires: -trmnl-server, -device-id, -access-token")
+		}
+		cs = &trmnlClient{server: *trmnlServer, deviceID: *deviceID, token: *accessToken, fallback: *refresh, status: st}
+		log.Printf("content source: TRMNL at %s (device %s)", *trmnlServer, *deviceID)
+	default:
+		log.Fatalf("unknown -source %q (want %q or %q)", *source, "ha", "trmnl")
+	}
+
 	for {
-		if err := tc.refresh(fc); err != nil {
-			log.Printf("initial TRMNL fetch failed: %v — retrying in 5s", err)
+		if err := cs.refresh(fc); err != nil {
+			log.Printf("initial fetch failed: %v — retrying in 5s", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		_, full, _, _ := fc.load()
 		if len(full) == 0 {
-			log.Printf("TRMNL has no image for this device yet — retrying in 10s")
+			log.Printf("no image ready yet — retrying in 10s")
 			time.Sleep(10 * time.Second)
 			continue
 		}
 		log.Printf("initial frame ready (%d bytes)", len(full))
 		break
 	}
-	go tc.loop(fc)
+	go cs.loop(fc)
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
@@ -83,24 +126,20 @@ func main() {
 			log.Printf("accept: %v", err)
 			continue
 		}
-		go handleConn(conn, fc, st, tc)
+		go handleConn(conn, fc, st, cs)
 	}
 }
 
 // handleConn serves a Joan connection for its full lifetime: it wraps the socket
-// as a session and runs the heartbeat exchange policy (serve). The touch handler
-// advances the TRMNL playlist by re-polling.
-func handleConn(conn net.Conn, fc *frameStore, st *deviceStatus, tc *trmnlClient) {
+// as a session and runs the heartbeat exchange policy (serve). Every tap is
+// routed to the active content source, coordinates and all.
+func handleConn(conn net.Conn, fc *frameStore, st *deviceStatus, cs contentSource) {
 	defer conn.Close()
 	remote := conn.RemoteAddr().String()
 	log.Printf("[%s] connected", remote)
 
 	s := &netSession{conn: conn, r: bufio.NewReader(conn)}
-	serve(s, fc, st, func() {
-		if err := tc.refresh(fc); err != nil {
-			log.Printf("[%s] touch refresh failed: %v", remote, err)
-		}
-	}, remote)
+	serve(s, fc, st, func(x, y int) { cs.onTouch(x, y, fc) }, remote)
 }
 
 // session is the per-connection transport the heartbeat policy needs: read the
@@ -131,8 +170,10 @@ func (s *netSession) write(p []byte) error {
 
 // serve runs the heartbeat exchange policy over a session. Joan sends a Status
 // hello every heartbeat (~3 min) and a touch packet when tapped. For each
-// message: a touch calls onTouch (advance the playlist); a hello records
-// telemetry. Then we ACK. When the stored image is new we push it — as a partial
+// message: a touch calls onTouch(x, y) so the active content source can react
+// (switch dashboard page, fire an HA service call, advance a TRMNL playlist —
+// whatever it does with the tap); a hello records telemetry. Then we ACK. When
+// the stored image is new we push it — as a partial
 // update (only the changed rectangle, flicker-free) when we have a confirmed
 // baseline of what the device currently shows and the change is small enough,
 // otherwise as a full frame — and wait for Joan's image ACK.
@@ -142,7 +183,7 @@ func (s *netSession) write(p []byte) error {
 // So the first push of any connection is full, a reconnect re-syncs with a full,
 // and a partial is only ever diffed against a frame we know the device shows.
 // Returns when a session read fails (disconnect).
-func serve(s session, fc *frameStore, st *deviceStatus, onTouch func(), remote string) {
+func serve(s session, fc *frameStore, st *deviceStatus, onTouch func(x, y int), remote string) {
 	var lastDisplayed []byte
 	for {
 		msg, err := s.read(5 * time.Minute)
@@ -152,8 +193,8 @@ func serve(s session, fc *frameStore, st *deviceStatus, onTouch func(), remote s
 		}
 		switch m := msg.(type) {
 		case pv3.Touch:
-			log.Printf("[%s] touch (%d,%d) → advancing playlist", remote, m.X, m.Y)
-			onTouch()
+			log.Printf("[%s] touch (%d,%d)", remote, m.X, m.Y)
+			onTouch(m.X, m.Y)
 		case pv3.Hello:
 			if m.Telemetry != nil {
 				st.update(*m.Telemetry)
@@ -362,6 +403,15 @@ func (tc *trmnlClient) fetchFrame(url string) (packed, full []byte, err error) {
 	return packed, pv3.EncodeFramePacked(packed), nil
 }
 
+// onTouch satisfies contentSource: any tap just re-polls TRMNL, which
+// advances its own playlist server-side — Joan's tap coordinates aren't
+// meaningful in TRMNL mode, only the fact that a tap happened.
+func (tc *trmnlClient) onTouch(x, y int, fc *frameStore) {
+	if err := tc.refresh(fc); err != nil {
+		log.Printf("touch refresh failed: %v", err)
+	}
+}
+
 func (tc *trmnlClient) loop(fc *frameStore) {
 	for {
 		interval := tc.fallback
@@ -429,6 +479,15 @@ func envDuration(key string, def time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
+		}
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
 		}
 	}
 	return def
