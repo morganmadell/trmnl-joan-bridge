@@ -1,7 +1,7 @@
 # Joan 6 device identity
 
-Captured from Joan's own logs (via Joan Configurator app, "Get Device
-Information" feature) on 2026-05-24.
+We took this data from the panel's own logs on 2026-05-24. We got it with the
+Joan Configurator app's "Get Device Information" feature.
 
 ## Hardware
 
@@ -21,7 +21,7 @@ Resolution:        1024 x 758
 Waveform:          6.0_C276_U2
 Driver IC:         6.0_p47000cd0502
 Encoding (panel):  0x4 = 4-bit grayscale
-                   (from internal `l:` log line — confirms what Joan renders)
+                   (from an internal `l:` log line. This confirms what the panel renders.)
 ```
 
 ## Firmware & bootloader
@@ -68,21 +68,22 @@ Total:                  130988 bytes
 Free:                   130988 bytes  (empty as of S09)
 ```
 
-That's only ~128 KB of file storage. So image files pushed via the File
-protocol must be small enough to fit alongside firmware reserved space.
+This is only about 128 KB of file storage. Image files sent through the File
+protocol must be small. They must fit next to the space reserved for firmware.
 
 ## Important error code
 
 ```
-PV2 error: 0x00210000   = Joan's rejection of our 3-packet sequence
+PV2 error: 0x00210000   = the panel's rejection of our 3-message sequence
                           (session 09; cause still being investigated)
 PV2 error: 0x00220000   = variant seen once; likely a sibling protocol error
 ```
 
-## The 88-byte "introduction" packet — what it is
+## The 88-byte "introduction" message — what it is
 
-When Joan boots fresh, it sometimes sends an 88-byte packet to the server
-before the regular 456-byte Status hello. The 88-byte payload contains the
-**FW CRC inline** (bytes 8..11 = `17 9c 0b 5e` LE = `0x5e0b9c17`, matches
-`PV2_FW_CRC` from logs). So it's a **device identity / capability
-announcement**. We previously treated it as "mystery."
+When the panel boots fresh, it sometimes sends an 88-byte message to the
+bridge. It sends this before the regular 456-byte Status hello. The 88-byte
+payload contains the FW CRC inline: bytes 8 to 11 are `17 9c 0b 5e` in
+little-endian order, which equals `0x5e0b9c17`. This value matches
+`PV2_FW_CRC` from the logs. So this message is an announcement of the panel's
+identity and capabilities. We previously treated it as a mystery.

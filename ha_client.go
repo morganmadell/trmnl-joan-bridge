@@ -50,9 +50,6 @@ func newHAClient(fallback time.Duration) *haClient {
 		log.Fatalf("load zone config: %v", err)
 	}
 
-	go startAuthServer(haURL, haToken)
-	time.Sleep(200 * time.Millisecond) // let the loopback auth server bind before the first render
-
 	return &haClient{
 		haURL:       haURL,
 		haToken:     haToken,
@@ -77,7 +74,7 @@ func (h *haClient) currentPage() *page {
 // refresh satisfies contentSource: render the current page and store it.
 func (h *haClient) refresh(fc *frameStore) error {
 	p := h.currentPage()
-	img, err := renderDashboard(h.chromiumBin, p.Path, h.waitMs)
+	img, err := renderDashboard(h.chromiumBin, h.haURL, h.haToken, p.Path, h.waitMs)
 	if err != nil {
 		return err
 	}

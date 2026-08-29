@@ -1,24 +1,27 @@
 # Status hello — device telemetry (PV3 type 3)
 
-Joan opens a TCP connection and sends a **Status hello** (PV3 type 3) on every
-heartbeat (~3 min). Besides announcing the device, the hello body carries live
-telemetry — battery, signal, temperature, filesystem — as a key-value list.
+The panel opens a TCP connection. It sends a Status hello (PV3 type 3) on
+every heartbeat, about every 3 minutes. Besides announcing the panel, the
+hello body carries live telemetry as a key-value list: battery, signal,
+temperature, and file system.
 
 ## Body layout
 
-After the 20-byte outer header, the body is a flat list of `[key:u32][value:u32]`
-little-endian pairs starting at **body offset `0x34`**, terminated by a key of
-`0xffffffff` followed by a 4-byte CRC32 trailer. The 456- and 532-byte hello
-variants share this layout; the 532-byte one just appends extra keys.
+After the 20-byte outer header, the body is a flat list of
+`[key:u32][value:u32]` pairs in little-endian order. This list starts at
+body offset `0x34`. A key of `0xffffffff` ends the list, followed by a
+4-byte CRC32 trailer. The 456-byte and 532-byte hello variants share this
+layout. The 532-byte variant just appends extra keys.
 
-Parse **by key, not by fixed offset** — keys are sparse (14, 1c, 21 … are absent)
-but always appear in ascending order.
+Parse by key, not by fixed offset. Keys are sparse: some keys, such as 14,
+1c, and 21, are absent. Keys always appear in ascending order.
 
 ## Field map
 
-Identified by diffing 19 hellos across 6.8 h: constants stayed fixed, dynamic
-sensors drifted. Cross-checked against the device's own "Get Device Information"
-readout (see [device-identity.md](device-identity.md)).
+We identified this field map by diffing 19 hello messages captured across
+6.8 hours. The constant fields stayed fixed, and the dynamic sensor fields
+drifted. We cross-checked the fields against the panel's own "Get Device
+Information" readout (see [device-identity.md](device-identity.md)).
 
 | key (hex / dec) | field | notes |
 | --- | --- | --- |
@@ -33,20 +36,22 @@ readout (see [device-identity.md](device-identity.md)).
 | 0x32–0x35 / 50–53 | GTIN | "3830065460078" as 4-char ASCII chunks |
 | 0x3c, 0x3d / 60, 61 | filesystem free, total | 130988 bytes |
 
-The voltage⇄current correlation pins down keys 34 and 35: voltage *climbs* while
-current ≈ 950 mA (charging), then *falls* the instant current hits 0 (unplugged).
+The correlation between voltage and current pins down keys 34 and 35.
+Voltage climbs while current is about 950 mA, during charging. Voltage
+falls the instant current hits 0, when the panel is unplugged.
 
-Keys 10, 12 and 13 were confirmed against the live VSS admin dashboard for this
-device — Battery 20%, Temperature 25°C, Signal -54 — matching keys 10, 12, 13
-exactly. (Time-series guesswork alone had keys 10 and 13 swapped: key 10's
-apparent "fast swing" was the battery gauge correcting when the charger was
-unplugged, the same instant key 35 current went 954→0.)
+We confirmed keys 10, 12, and 13 against the live VSS admin dashboard for
+this panel: Battery 20%, Temperature 25°C, and Signal -54. These values
+matched keys 10, 12, and 13 exactly. Time-series guesswork alone had keys 10
+and 13 swapped. Key 10's apparent "fast swing" was the battery gauge
+correcting itself when the charger was unplugged. This happened at the same
+instant that key 35's current went from 954 to 0.
 
 ## Forwarding to TRMNL (BYOS)
 
-TRMNL reads device telemetry from request headers on `GET /api/display`. The
-contract, from byos_hanami `app/schemas/firmware/header.rb` and
-`app/aspects/firmware/headers/model.rb`:
+TRMNL reads telemetry from the panel from request headers on
+`GET /api/display`. The contract comes from byos_hanami's
+`app/schemas/firmware/header.rb` and `app/aspects/firmware/headers/model.rb`:
 
 | HTTP header | type | persisted device field |
 | --- | --- | --- |
@@ -60,27 +65,32 @@ contract, from byos_hanami `app/schemas/firmware/header.rb` and
 | `Model` | string | model_name |
 | `Refresh-Rate` | int | refresh_rate |
 
-**Validation is strict and fail-closed:** a header that fails its type check makes
-the entire `/api/display` action return **404**, so the device would get no image.
-The shim therefore only emits well-formed values, and only emits battery/RSSI once
-a real hello has been parsed and range-checked (2000–5000 mV, RSSI ≤ 120).
+**Validation is strict and fail-closed:** if a header fails its type check,
+the whole `/api/display` action returns 404. Then the panel would get no
+image. So the bridge only sends well-formed values. It sends battery and
+RSSI values only after it has parsed and range-checked a real hello: 2000 to
+5000 mV for voltage, and RSSI of 120 or less.
 
-**Sent by the shim:** `ID`, `Access-Token`, `Battery-Voltage` (key 34 ÷ 1000),
-`RSSI` (−key 13), `Percent-Charged` (key 10), `Width` (1024), `Height` (758),
-`Refresh-Rate` (poll cadence).
+**Sent by the bridge:** `ID`, `Access-Token`, `Battery-Voltage` (key 34 ÷
+1000), `RSSI` (−key 13), `Percent-Charged` (key 10), `Width` (1024), `Height`
+(758), and `Refresh-Rate` (poll interval).
 
 **Deliberately not sent:**
-- `FW-Version` — risks the `Types::Version` check (→ 404) and feeds TRMNL's
-  firmware-update comparison; cosmetic here, since the shim never forwards
-  TRMNL's `firmware_url` to Joan (Joan only ever receives PV3 image frames).
+- `FW-Version` — this risks failing the `Types::Version` check, which
+  returns 404. It also feeds TRMNL's firmware-update comparison. This check
+  is cosmetic here, because the bridge never forwards TRMNL's
+  `firmware_url` to the panel. The panel only ever receives PV3 image
+  frames.
 
 ## Touch events (type 6)
 
-Tapping the screen sends a **76-byte device→server packet** — one per tap (no
-separate down/up). It carries the device serial, an event-type marker **`6` at
-body+20** (u16 LE), and coordinates **X at body+48, Y at body+52** (u16 LE):
+A touch on the panel sends a 76-byte message from the panel to the bridge.
+The panel sends one message per touch; it does not send separate down and
+up events. The message carries the panel's serial number, an event-type
+marker of `6` at body+20 (u16 LE), and coordinates: X at body+48 and Y at
+body+52 (u16 LE):
 
-| tap (user view) | X (body+48) | Y (body+52) |
+| touch (user view) | X (body+48) | Y (body+52) |
 | --- | --- | --- |
 | top-left | ~970 | ~770–820 |
 | top-right | ~50 | ~730 |
@@ -88,14 +98,18 @@ body+20** (u16 LE), and coordinates **X at body+48, Y at body+52** (u16 LE):
 | bottom-right | ~67 | ~70 |
 | centre | ~505 | ~420 |
 
-Coordinates are in the panel's native orientation, **flipped 180°** from the
-displayed image (high X = user left, high Y = user top): `userX ≈ Xmax − rawX`,
-`userY ≈ Ymax − rawY`, with X ≈ 0–1024 and Y ≈ 0–~820 (the digitizer runs a
-little taller than the 758 display). For touch *zones* the raw values suffice;
-for exact pixels, linear-fit from corner taps.
+Coordinates are in the panel's native orientation. They are flipped 180°
+from the displayed image: a high X value means the user's left side, and a
+high Y value means the user's top side. `userX ≈ Xmax − rawX` and
+`userY ≈ Ymax − rawY`, with X from about 0 to 1024 and Y from about 0 to
+820. The digitizer runs a little taller than the 758-pixel display. For
+touch zones, the raw values are enough. For exact pixels, use a linear fit
+from touches at the corners.
 
-**Tap → next playlist item:** TRMNL's `/api/display` rotator advances the
-playlist on every poll (unless the playlist is `manual`). So the shim treats any
-touch as "advance": on a 76-byte packet it re-polls TRMNL (rotating to the
-next screen, re-encoding) and pushes the new frame on the same connection —
-~2 s tap-to-render. The coordinates aren't used for this (any tap advances).
+**Touch → next playlist item:** TRMNL's `/api/display` rotator advances the
+playlist on every poll, unless the playlist is set to `manual`. So the
+bridge treats any touch as an "advance" signal. On a 76-byte message, the
+bridge re-polls TRMNL, which rotates to the next screen and re-encodes it.
+The bridge then pushes the new frame on the same connection. This takes
+about 2 seconds from touch to render. The coordinates are not used for
+this; any touch advances the playlist.

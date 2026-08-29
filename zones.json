@@ -1,0 +1,38 @@
+{
+  "_comment": "Full 3-page dashboard zone config, matching Instructions.md's Dashboard design. Rectangles were measured directly (getBoundingClientRect) against a real kiosk-mode render at 1024x758 on 2026-07-28 -- not guessed -- after the HA sidebar/header chrome was hidden and content widened to fill the full panel (see ha_render.go's kioskModeJS). Nav zones (y 40-155, matching the real button row) switch pages; the controls page's four full-width row zones (y 160-420, matching the real stacked tile rows) call HA media_player.toggle. Still worth a final recalibration against the physical device once connected -- these are accurate for the browser render, not yet verified against the real panel's touch reporting.",
+
+  "pages": [
+    {
+      "name": "sensors",
+      "path": "/lovelace-joan/sensors",
+      "zones": [
+        {"x1": 0,   "y1": 40, "x2": 356,  "y2": 155, "action": {"page": "sensors"}},
+        {"x1": 356, "y1": 40, "x2": 668,  "y2": 155, "action": {"page": "controls"}},
+        {"x1": 668, "y1": 40, "x2": 1024, "y2": 155, "action": {"page": "graphs"}}
+      ]
+    },
+    {
+      "name": "controls",
+      "path": "/lovelace-joan/controls",
+      "zones": [
+        {"x1": 0,   "y1": 40,  "x2": 356,  "y2": 155, "action": {"page": "sensors"}},
+        {"x1": 356, "y1": 40,  "x2": 668,  "y2": 155, "action": {"page": "controls"}},
+        {"x1": 668, "y1": 40,  "x2": 1024, "y2": 155, "action": {"page": "graphs"}},
+
+        {"x1": 0, "y1": 160, "x2": 1024, "y2": 230, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.boardroom_tv"}},
+        {"x1": 0, "y1": 230, "x2": 1024, "y2": 294, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.boardroom_tv_un85du6900fxzc"}},
+        {"x1": 0, "y1": 294, "x2": 1024, "y2": 358, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.chromecast3441"}},
+        {"x1": 0, "y1": 358, "x2": 1024, "y2": 420, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.tv_samsung_8_series_82"}}
+      ]
+    },
+    {
+      "name": "graphs",
+      "path": "/lovelace-joan/graphs",
+      "zones": [
+        {"x1": 0,   "y1": 40, "x2": 356,  "y2": 155, "action": {"page": "sensors"}},
+        {"x1": 356, "y1": 40, "x2": 668,  "y2": 155, "action": {"page": "controls"}},
+        {"x1": 668, "y1": 40, "x2": 1024, "y2": 155, "action": {"page": "graphs"}}
+      ]
+    }
+  ]
+}
