@@ -28,6 +28,45 @@ point the panel at a server you control.
                                (same Home Assistant instance)
 ```
 
+## Setting up a new Joan-6 + Home Assistant instance
+
+Follow these files **in this order** to go from a factory Joan-6 and a
+fresh Home Assistant instance to a working, paired display. Each one links
+to the next — this section is just the map.
+
+1. **This file (`README.md`)** — deploy the bridge server itself. Copy
+   `.env.example` to `.env`, fill in `HA_URL`/`HA_TOKEN`, then run
+   `./deploy.sh`. See "Deploying with deploy.sh" below.
+2. **[`dashboard/README.md`](dashboard/README.md)** — import a Lovelace
+   dashboard into your Home Assistant instance for the bridge to render.
+   `dashboard/lovelace-joan.yaml` is a real, working example to start from
+   and customize with your own entities.
+3. **`zones.json`** (copy `zones.example.json` to start) — define which
+   parts of your dashboard the panel's touch input maps to. Only needed
+   once your dashboard layout (from step 2) is in its final shape, since
+   the coordinates depend on it. See "Troubleshooting and touch
+   calibration" below, and `tools/measure_zones.ps1`.
+4. **[`PAIRING.md`](PAIRING.md)** — do this last, once the bridge (step 1)
+   is actually running and reachable. Physically connect the Joan-6 over
+   USB and point it at your bridge using `tools/pair_device.ps1`. This is
+   the step that makes the physical panel actually show your dashboard.
+
+## Configuration files — what to edit for your own setup
+
+| File | Controls | Start from |
+|---|---|---|
+| `.env` | Bridge server settings: Home Assistant URL/token, listen port, zones file path, render timing. Every variable is documented inline. | `.env.example` |
+| `zones.json` | Which screen regions respond to touch, and what each one does (switch page / call a Home Assistant service). Tied to your dashboard's exact layout — re-measure after any layout change. | `zones.example.json`, `tools/measure_zones.ps1` |
+| Your Home Assistant dashboard | What the panel actually displays — sensors, controls, graphs. Lives inside Home Assistant itself, not in this repo, once imported. | `dashboard/lovelace-joan.yaml` (see `dashboard/README.md`) |
+
+`.env` is gitignored — you create it yourself from `.env.example` and it's
+never meant to be committed with your real token in it. `zones.json` is
+different: it's a tracked file, currently checked in with *this* project's
+own real touch-zone layout and entity IDs. Starting a new setup means
+editing it (or replacing its contents with your own, using
+`zones.example.json`'s structure as a guide) to match your own dashboard,
+not creating it fresh.
+
 ## Home Assistant mode (default)
 
 1. **Renders** the current page's dashboard with a headless Chromium
