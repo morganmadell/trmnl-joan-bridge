@@ -69,6 +69,36 @@ point the panel at a server you control.
    renders the dashboard again immediately, so the change shows up right
    away.
 
+### Deploying with deploy.sh
+
+The easiest way to run the bridge is `bridge/deploy.sh`:
+
+1. Copy `.env.example` to `.env`.
+2. Fill in `HA_URL` and `HA_TOKEN` (and any other values you want to
+   override — see the table below and the comments in `.env.example`).
+3. From the `bridge/` directory, run `./deploy.sh`.
+
+`deploy.sh` builds the image locally from this directory's `Dockerfile` and
+runs it with `--restart unless-stopped`, mounting `zones.json` and a
+`debug-screenshots` directory into the container. It also removes any
+existing container of the same name first, so re-running it after a code
+change is a safe way to redeploy.
+
+`deploy.sh` also accepts a `--pull` flag, which skips the local build and
+instead pulls a published `ghcr.io` image and runs that. That flag isn't
+useful yet on this branch — only pushes to `main` get built and pushed to
+`ghcr.io` by CI, and this work hasn't merged there yet — but it will be
+once this branch merges.
+
+Create the long-lived access token `.env`'s `HA_TOKEN` needs in Home
+Assistant. Go to your profile (bottom-left avatar), then Security, then
+Long-Lived Access Tokens.
+
+The raw `docker run` invocation below is what `deploy.sh` does under the
+hood. It's still useful if you want to run the container manually, tweak
+the flags yourself, or just see exactly what's happening without reading
+the script:
+
 ```bash
 docker run -d --name trmnl-joan-bridge \
   --restart unless-stopped \
@@ -79,8 +109,10 @@ docker run -d --name trmnl-joan-bridge \
   ghcr.io/<your-fork>/trmnl-joan-bridge:latest
 ```
 
-Create the long-lived access token in Home Assistant. Go to your profile
-(bottom-left avatar), then Security, then Long-Lived Access Tokens.
+> That `ghcr.io/<your-fork>/...` tag assumes a published image already
+> exists. That isn't yet true for this branch — CI only builds and pushes
+> `main` to `ghcr.io`. Use `./deploy.sh` (without `--pull`) to build and run
+> this branch locally today.
 
 `--restart unless-stopped` matters here more than on a typical container.
 As of 2026-08-31, the bridge has an unresolved, intermittent crash
@@ -100,6 +132,20 @@ investigation.
 | `CHROMIUM_BIN` | no | `chromium` (`headless-shell` in the Dockerfile) | Browser executable name/path |
 | `RENDER_WAIT_MS` | no | `4000` | Time to let the dashboard load before the bridge renders it |
 | `DEBUG_SAVE_SCREENSHOTS` | no | — | If set, a directory where the bridge saves the latest screenshot, for diagnosis |
+
+## Importing the dashboard
+
+The Home Assistant dashboard this bridge renders isn't included by
+default — Home Assistant dashboards live in your own instance, so you
+need to create or import one there before HA mode has anything meaningful
+to show. This repository includes a real, working, exported example of
+exactly the 3-page Sensors/Controls/Graphs layout this project actually
+uses in production, at
+[`bridge/dashboard/lovelace-joan.yaml`](dashboard/lovelace-joan.yaml). Full
+import instructions and a customization checklist (which entities you must
+replace with your own before it will show real data) are in
+[`bridge/dashboard/README.md`](dashboard/README.md) — see that file rather
+than duplicating the steps here.
 
 ## TRMNL mode (`-source=trmnl` / `SOURCE=trmnl`, upstream behavior)
 
@@ -141,6 +187,12 @@ docker run -d --name trmnl-joan-bridge \
   -e ACCESS_TOKEN="your-trmnl-device-token" \
   ghcr.io/<your-fork>/trmnl-joan-bridge:latest
 ```
+
+> As above, that `ghcr.io/<your-fork>/...` tag assumes a published image —
+> not yet true for this branch (CI only pushes `main` to `ghcr.io`). Build
+> and run locally instead; `./deploy.sh` (see the Home Assistant mode
+> section above) works for either mode, since it just builds this
+> directory's `Dockerfile` and reads `SOURCE` from `.env`.
 
 | Variable           | Required | Default   | Description                                                        |
 | ------------------ | -------- | --------- | ------------------------------------------------------------------ |
@@ -272,6 +324,17 @@ coordinates tell you which one is wrong. If a touch seems to do nothing at
 all, check the device's own serial or diagnostic console (see `docs/`)
 alongside the bridge logs. Together, they tell you whether the device
 sent the touch at all.
+
+**Re-measuring zones after a layout change.**
+[`bridge/tools/measure_zones.ps1`](tools/measure_zones.ps1) formalizes the
+technique above for finding the touch-zone y-boundaries: it pixel-scans a
+real screenshot for text-block boundaries using a luminance threshold, and
+prints the resulting y-ranges as candidate zone boundaries. Point its
+`-ImagePath` parameter at a real `DEBUG_SAVE_SCREENSHOTS` capture — the
+actual frame that was pushed to and ACKed by the physical panel — not a
+fresh, unrelated render, since layout can shift between renders (card
+order, entity state, HA frontend version). Use `bridge/zones.example.json`
+as the structural template for the resulting `zones.json`.
 
 ## Building from source
 

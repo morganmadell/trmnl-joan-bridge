@@ -1,6 +1,7 @@
 # Local secrets (HA_TOKEN etc.) — never commit
 .env
 .env.*
+!.env.example
 
 # Compiled binaries
 bin/
