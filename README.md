@@ -71,6 +71,7 @@ point the panel at a server you control.
 
 ```bash
 docker run -d --name trmnl-joan-bridge \
+  --restart unless-stopped \
   -p 11112:11112 \
   -e HA_URL="http://10.218.10.81:8123" \
   -e HA_TOKEN="your-ha-long-lived-access-token" \
@@ -80,6 +81,16 @@ docker run -d --name trmnl-joan-bridge \
 
 Create the long-lived access token in Home Assistant. Go to your profile
 (bottom-left avatar), then Security, then Long-Lived Access Tokens.
+
+`--restart unless-stopped` matters here more than on a typical container.
+As of 2026-08-31, the bridge has an unresolved, intermittent crash
+(`ExitCode 2`, a Go unhandled panic, no trace captured in `docker logs`
+yet) that shows up within seconds of a real device connection or image
+ACK. This flag makes Docker bring the container back up within a couple
+of seconds of any such crash, instead of leaving the panel unable to
+reach it until someone notices. It does not fix the underlying bug — see
+TODO.md's "Known unverified or risky areas" for the current state of that
+investigation.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -122,6 +133,7 @@ protocol notes.
 
 ```bash
 docker run -d --name trmnl-joan-bridge \
+  --restart unless-stopped \
   -p 11112:11112 \
   -e SOURCE=trmnl \
   -e TRMNL_SERVER="http://your-trmnl-host:2300" \
@@ -175,13 +187,41 @@ ways to fix the inbound side, in order of preference:
    ```ini
    [wsl2]
    networkingMode=mirrored
+
+   [experimental]
+   hostAddressLoopback=true
    ```
    Then run `wsl --shutdown` and restart your distro. This makes WSL2
-   share the Windows host's network interface directly. A port the bridge
-   listens on inside WSL2 then becomes reachable at the Windows machine's
-   own LAN IP, with no further steps. Verify this with `ip addr` inside
-   WSL2. Check that the IP matches the one your Windows host uses on the
-   LAN, not a `172.x` NAT address.
+   share the Windows host's network interface directly. Verify this with
+   `ip addr` inside WSL2. Check that the IP matches the one your Windows
+   host uses on the LAN, not a `172.x` NAT address.
+
+   **Two more steps are needed, confirmed on this project on 2026-08-28
+   after `networkingMode=mirrored` alone was not enough:**
+
+   - **`hostAddressLoopback=true`, shown above, is required.** Without it,
+     a port bound inside WSL2 (with or without Docker) stays unreachable
+     from the Windows host at the shared LAN IP, even though the IP
+     address itself is correctly shared and the port is reachable from
+     inside WSL2 on that same IP. With it, the port becomes reachable from
+     the Windows host, which sits on the same LAN segment the Joan-6 panel
+     does. This setting needs a `wsl --shutdown` and restart to take
+     effect, the same as `networkingMode`.
+   - **A firewall rule is still required.** Mirrored mode does not bypass
+     Windows Firewall's inbound inspection for the shared interface. Run
+     this from an elevated Windows PowerShell, once:
+     ```powershell
+     New-NetFirewallRule -DisplayName "Joan bridge (11112)" -Direction Inbound -LocalPort 11112 -Protocol TCP -Action Allow
+     ```
+     Unlike the port-proxy command below, this rule does not depend on the
+     WSL2 IP, so it does not need to run again after a reboot.
+
+   **A note on testing this yourself:** connecting to your own LAN IP from
+   the same Windows machine (self-connect) works fine for a normal,
+   natively-bound Windows program, so it is a valid way to test this
+   setup — do not assume a failure there is just a self-connect quirk.
+   A genuinely separate device on the LAN is still the strongest test,
+   since it is what the panel itself will do.
 2. **Port proxy and firewall rule** (older WSL2, or use this if mirrored
    mode is not available). Run this from an elevated Windows PowerShell:
    ```powershell
