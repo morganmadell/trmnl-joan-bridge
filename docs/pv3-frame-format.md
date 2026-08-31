@@ -1,10 +1,11 @@
 # PV3 frame format (Joan 6 / Visionect)
 
-The device-side PV3 wire protocol is not publicly documented. This is the frame
-format the shim implements, reverse-engineered from the VSS binaries (which ship
-unstripped, with DWARF) — Go modules `bill.vnct.xyz/vss/proto@v1.2.23` and
-`bill.vnct.xyz/vss/lz4`. See [vss-binary-recon.md](vss-binary-recon.md) for how
-the binaries were obtained and inspected.
+Visionect does not publish the PV3 wire protocol used by the panel. This
+document describes the frame format that the bridge implements. We
+reverse-engineered it from the VSS binaries, which ship unstripped, with
+DWARF debug info, from the Go modules `bill.vnct.xyz/vss/proto@v1.2.23` and
+`bill.vnct.xyz/vss/lz4`. See [vss-binary-recon.md](vss-binary-recon.md) for
+how we obtained and inspected the binaries.
 
 ## Frame layout
 
@@ -12,8 +13,8 @@ the binaries were obtained and inspected.
 ProtocolHeader (20)  +  ImageHeader (20)  +  pre-header  +  80 × dataBlock
 ```
 
-Everything after the ProtocolHeader is its `Length` bytes; the ProtocolHeader
-`Checksum` is `CRC32(body)`.
+Everything after the `ProtocolHeader` makes up its `Length` bytes. The
+`ProtocolHeader`'s `Checksum` field is `CRC32(body)`.
 
 ## Structs (exact layouts from DWARF)
 
@@ -36,23 +37,25 @@ Everything after the ProtocolHeader is its `Length` bytes; the ProtocolHeader
 | 16 | Reserved | 1 |
 
 **dataBlock** — 24-B header + data: `BlockID`(u32, 1-based), `BlockLast`(u32,
-= NrPrimitives), `compSize`(u32), `rawSize`(u32), 8 B pad, then `compSize` bytes
-of LZ4 data. Walking 80 of these consumes exactly `Length`.
+= NrPrimitives), `compSize`(u32), `rawSize`(u32), 8 B pad, then `compSize`
+bytes of LZ4 data. Walking through 80 of these blocks consumes exactly
+`Length` bytes.
 
 **RectangleHeader** — 24 B, the **last 24 bytes of the pre-header header** in
 every frame (not just partials): `ImageType`(u16, 1=Gray), `ScreenID`(u16),
 `X`(u16), `Y`(u16), `Width`(u16), `Height`(u16), `RectangleUpdateOptions`(u16,
 0x0102 for 4-bit), `Options`(u16), `Encoding`(u16, 4), `Reserved`(u16),
-`PayloadLength`(u32, = `Width*Height/2`). It is the region the payload paints —
-the whole screen (`0,0,1024,758`) for a full frame, a sub-rectangle for a partial
-update. See [partial-updates.md](partial-updates.md).
+`PayloadLength`(u32, = `Width*Height/2`). It is the region that the payload
+paints. This is the whole screen (`0,0,1024,758`) for a full frame, and a
+sub-rectangle for a partial update. See [partial-updates.md](partial-updates.md).
 
 **DataHeader** — 36 B: `Priority`, `UUID` (16 B), `Type`, `ID`, `Length`.
 
 ## Compression
 
-`vss/lz4.Lz4Compress` is a CGO wrapper over the stock LZ4 C library
-(`LZ4_compress` / `LZ4_decompress_safe`) — plain **stateless LZ4, no dictionary**.
+`vss/lz4.Lz4Compress` is a CGO wrapper around the stock LZ4 C library
+(`LZ4_compress` / `LZ4_decompress_safe`). It uses plain, stateless LZ4, with
+no dictionary.
 
 ## Encode pipeline (in VSS)
 
@@ -63,11 +66,12 @@ CompressPacket(packet) → Marshall(packet) → ToBlocks: chunk into PayloadLeng
 
 ## Block / pixel coverage
 
-The panel is 1024×758 at 4-bit grayscale = **388096 bytes** (2 px/byte). The 80
-`dataBlock`s cover `packed[0:383376]` (79×4800 + 4176 = the top 749 rows); the
-**pre-header carries the remaining 4720 bytes** = `packed[383376:388096]`, which
-the device places at the end of the framebuffer (the bottom ~9 rows after the
-fixed 180° rotation).
+The panel is 1024×758 pixels, at 4-bit grayscale. This equals 388096 bytes,
+at 2 pixels per byte. The 80 `dataBlock`s cover `packed[0:383376]`, which is
+79×4800 + 4176 bytes, or the top 749 rows. The pre-header carries the
+remaining 4720 bytes: `packed[383376:388096]`. The panel places these bytes
+at the end of the framebuffer. This is the bottom 9 rows, after the fixed
+180° rotation.
 
 ## The pre-header
 
@@ -75,19 +79,21 @@ fixed 180° rotation).
 pre-header = 60-byte preamble + RectangleHeader (24 B) + tail pixels (raw, 4720 B)
 ```
 
-The 60-byte preamble carries the device UUID
-(`42 00 28 00 0d 51 37 31 37 34 39 34`), the `PacketImage` type (5), two nonce
-fields the device does **not** validate, and two **payload-size fields it does
-validate** (byte 32 = payload + 44, byte 52 = payload + 24; payload = the region
-byte count). The `RectangleHeader` (above) is the region descriptor; the tail is
-the last 4720 bytes of the region's pixels (the part the blocks don't cover).
-`ImageHeader.Options` = the pre-header region length − 4.
+The 60-byte preamble carries the panel's UUID
+(`42 00 28 00 0d 51 37 31 37 34 39 34`) and the `PacketImage` type (5). It
+also carries two nonce fields that the panel does not validate, and two
+payload-size fields that the panel does validate: byte 32 is `payload + 44`,
+and byte 52 is `payload + 24`, where `payload` is the region's byte count.
+The `RectangleHeader` above is the region descriptor. The tail is the last
+4720 bytes of the region's pixels, the part the blocks do not cover.
+`ImageHeader.Options` equals the pre-header region length minus 4.
 
-## How the shim builds a frame
+## How the bridge builds a frame
 
-`pv3/encode.go` regenerates the pre-header every frame: `preHeaderHdr84` (the
-84-byte header, fixed for this device) + the image's **real** tail pixels
-`packed[383376:388096]` sent raw, with `Options = len − 4`. The 80 blocks are
-LZ4-compressed; the tail is raw (the device accepts a raw tail — VSS itself sends
-raw for incompressible content). This is why the bottom ~9 rows show live content
-rather than a frozen blob.
+`pv3/encode.go` regenerates the pre-header for every frame. It combines
+`preHeaderHdr84`, the 84-byte header fixed for this panel, with the image's
+real tail pixels, `packed[383376:388096]`, sent raw, and sets
+`Options = len − 4`. The bridge LZ4-compresses the 80 blocks, but sends the
+tail raw. The panel accepts a raw tail; VSS itself sends raw data for
+content it cannot compress well. This is why the bottom 9 rows show live
+content, not a frozen image.

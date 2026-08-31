@@ -1,0 +1,38 @@
+{
+  "_comment": "Full 3-page dashboard zone config, matching Instructions.md's Dashboard design. Nav zones (y 40-118, matching the real nav-row text) switch pages. The controls page's four full-width row zones (y 150-500) were re-measured on 2026-08-31 against a real debug screenshot of the physical panel's actual pushed frame (pixel-scanned for text-row boundaries, not guessed), after the nav row and content section merged into one section (closing the white-space gap the user asked about) shifted every row up.",
+
+  "pages": [
+    {
+      "name": "sensors",
+      "path": "/lovelace-joan/sensors",
+      "zones": [
+        {"x1": 0,   "y1": 40, "x2": 356,  "y2": 118, "action": {"page": "sensors"}},
+        {"x1": 356, "y1": 40, "x2": 668,  "y2": 118, "action": {"page": "controls"}},
+        {"x1": 668, "y1": 40, "x2": 1024, "y2": 118, "action": {"page": "graphs"}}
+      ]
+    },
+    {
+      "name": "controls",
+      "path": "/lovelace-joan/controls",
+      "zones": [
+        {"x1": 0,   "y1": 40,  "x2": 356,  "y2": 118, "action": {"page": "sensors"}},
+        {"x1": 356, "y1": 40,  "x2": 668,  "y2": 118, "action": {"page": "controls"}},
+        {"x1": 668, "y1": 40,  "x2": 1024, "y2": 118, "action": {"page": "graphs"}},
+
+        {"x1": 0, "y1": 150, "x2": 1024, "y2": 238, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.boardroom_tv"}},
+        {"x1": 0, "y1": 238, "x2": 1024, "y2": 326, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.boardroom_tv_un85du6900fxzc"}},
+        {"x1": 0, "y1": 326, "x2": 1024, "y2": 413, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.chromecast3441"}},
+        {"x1": 0, "y1": 413, "x2": 1024, "y2": 500, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.tv_samsung_8_series_82"}}
+      ]
+    },
+    {
+      "name": "graphs",
+      "path": "/lovelace-joan/graphs",
+      "zones": [
+        {"x1": 0,   "y1": 40, "x2": 356,  "y2": 118, "action": {"page": "sensors"}},
+        {"x1": 356, "y1": 40, "x2": 668,  "y2": 118, "action": {"page": "controls"}},
+        {"x1": 668, "y1": 40, "x2": 1024, "y2": 118, "action": {"page": "graphs"}}
+      ]
+    }
+  ]
+}

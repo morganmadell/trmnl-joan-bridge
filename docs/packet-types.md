@@ -1,8 +1,8 @@
 # Packet types (the "type" field in the outer header)
 
-Extracted by disassembling each gateway handler's `Type()` method in the
-public `visionect/visionect-server-v3:8.5.5-arm` Docker image (one-instruction
-returns of the type constant).
+We got this by disassembling each gateway handler's `Type()` method in the
+public `visionect/visionect-server-v3:8.5.5-arm` Docker image. Each method
+returns the type constant in one instruction.
 
 | Type | Handler                  | Source            | What it carries                                    |
 |------|--------------------------|-------------------|----------------------------------------------------|
@@ -18,24 +18,31 @@ returns of the type constant).
 
 ## Direction
 
-The handler's `Type()` value is the type ID it *receives* on incoming frames.
-By convention server-to-device packets use the same type ID. So:
+The handler's `Type()` value is the type ID it receives in incoming messages.
+By convention, a message from the bridge to the panel uses the same type ID.
+For example:
 
-- Joan announces itself with `type=3` → we receive a Status frame.
-- We push an image to the Joan with `type=10` → it routes to its file handler.
+- The panel announces itself with a `type=3` message. We receive this as a
+  Status message.
+- We send an image to the panel with a `type=10` message. This message goes
+  to the panel's file handler.
 
 ## Source files
 
-All under `/code/go/src/vss/cmd/gateway/handlers/` (path visible via DWARF in
-the binary; not present on the image's filesystem).
+All handlers are under `/code/go/src/vss/cmd/gateway/handlers/`. DWARF debug
+info in the binary shows this path. The path is not present on the image's
+file system.
 
 ## What we know works
 
-- Joan reliably sends `type=3` Status packets (we have ~100 captures).
-- Reply with `type=3, version=0, len=0` (header-only) is accepted as a no-op.
-- Any reply with `len=0` for types 4, 8, 10 is rejected with a ~4-5s fast EOF.
+- The panel reliably sends `type=3` Status messages. We have about 100
+  captures of these messages.
+- A reply with `type=3, version=0, len=0` has only a header. The panel
+  accepts it as a no-op.
+- The panel rejects any reply with `len=0` for types 4, 8, or 10. It closes
+  the connection fast, in about 4 to 5 seconds.
 
 ## What we don't know yet
 
-- The body schemas for types 6, 7, 8, 10, 11, 12. Type 10's stateful sequence
-  is documented in `proto-package.md`.
+- We do not know the body schemas for types 6, 7, 8, 10, 11, and 12. Type
+  10's stateful sequence is documented in `proto-package.md`.

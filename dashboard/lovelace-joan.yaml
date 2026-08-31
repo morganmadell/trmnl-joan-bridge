@@ -1,0 +1,231 @@
+# lovelace-joan.yaml
+#
+# Exported snapshot of a REAL, WORKING Home Assistant Lovelace dashboard.
+# Fetched directly from a live, running Home Assistant instance on 2026-08-31.
+#
+# This is the actual 3-page dashboard (Sensors / Controls / Graphs) used by
+# this project's Joan-6 e-ink panel bridge -- the bridge renders each page of
+# this exact dashboard to the panel and maps physical touch input to it via
+# bridge/zones.json.
+#
+# IMPORTANT: The entity IDs used throughout this file (sensor.plant_sensor_*,
+# media_player.*, sensor.bermuda_global_*) are specific to the original
+# deployment this was exported from. They will NOT exist in your Home
+# Assistant instance and MUST be replaced with your own entity IDs before
+# this dashboard will work for you.
+#
+# See dashboard/README.md in this same directory for full instructions on
+# how to import this file, what must be customized, and why every card here
+# is built the way it is.
+
+title: Joan Display
+views:
+  - title: Sensors
+    path: sensors
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        cards:
+          - type: markdown
+            text_only: true
+            content: "# Sensors"
+            grid_options:
+              columns: 4
+              rows: 1
+          - type: markdown
+            text_only: true
+            content: "# Controls"
+            grid_options:
+              columns: 4
+              rows: 1
+          - type: markdown
+            text_only: true
+            content: "# Graphs"
+            grid_options:
+              columns: 4
+              rows: 1
+          - type: markdown
+            text_only: true
+            content: "## Break Area"
+          - type: grid
+            columns: 4
+            square: false
+            cards:
+              - type: markdown
+                text_only: true
+                content: "# <small>Temp</small><br>{{ states('sensor.plant_sensor_north_side_temperature') }}°C"
+              - type: markdown
+                text_only: true
+                content: "# <small>Light</small><br>{{ states('sensor.plant_sensor_north_side_illuminance') }} lx"
+              - type: markdown
+                text_only: true
+                content: "# <small>Moist</small><br>{{ states('sensor.plant_sensor_north_side_moisture') }}%"
+              - type: markdown
+                text_only: true
+                content: "# <small>Cond.</small><br>{{ states('sensor.plant_sensor_north_side_conductivity') }} µS/cm"
+            grid_options:
+              columns: full
+          - type: markdown
+            text_only: true
+            content: "## Big Boardroom"
+          - type: grid
+            columns: 4
+            square: false
+            cards:
+              - type: markdown
+                text_only: true
+                content: "# <small>Temp</small><br>{{ states('sensor.plant_sensor_boardroom_temperature') }}°C"
+              - type: markdown
+                text_only: true
+                content: "# <small>Light</small><br>{{ states('sensor.plant_sensor_boardroom_illuminance') }} lx"
+              - type: markdown
+                text_only: true
+                content: "# <small>Moist</small><br>{{ states('sensor.plant_sensor_boardroom_moisture') }}%"
+              - type: markdown
+                text_only: true
+                content: "# <small>Cond.</small><br>{{ states('sensor.plant_sensor_boardroom_conductivity') }} µS/cm"
+            grid_options:
+              columns: full
+          - type: markdown
+            text_only: true
+            content: "## Small Boardroom — no sensor installed"
+          - type: markdown
+            text_only: true
+            content: "## R&D Cubicles (Dana)"
+          - type: grid
+            columns: 4
+            square: false
+            cards:
+              - type: markdown
+                text_only: true
+                content: "# <small>Temp</small><br>{{ states('sensor.plant_sensor_dana_temperature') }}°C"
+              - type: markdown
+                text_only: true
+                content: "# <small>Light</small><br>{{ states('sensor.plant_sensor_dana_illuminance') }} lx"
+              - type: markdown
+                text_only: true
+                content: "# <small>Moist</small><br>{{ states('sensor.plant_sensor_dana_moisture') }}%"
+              - type: markdown
+                text_only: true
+                content: "# <small>Cond.</small><br>{{ states('sensor.plant_sensor_dana_conductivity') }} µS/cm"
+            grid_options:
+              columns: full
+          - type: markdown
+            text_only: true
+            content: "## BLE Presence (Global)"
+          - type: grid
+            columns: 4
+            square: false
+            cards:
+              - type: markdown
+                text_only: true
+                content: "# <small>Visible</small><br>{{ states('sensor.bermuda_global_visible_device_count') }}"
+              - type: markdown
+                text_only: true
+                content: "# <small>Active</small><br>{{ states('sensor.bermuda_global_active_proxy_count') }}"
+              - type: markdown
+                text_only: true
+                content: "# <small>Proxy</small><br>{{ states('sensor.bermuda_global_total_proxy_count') }}"
+              - type: markdown
+                text_only: true
+                content: "# <small>Seen</small><br>{{ states('sensor.bermuda_global_total_device_count') }}"
+            grid_options:
+              columns: full
+  - title: Controls
+    path: controls
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        cards:
+          - type: markdown
+            text_only: true
+            content: "# Sensors"
+            grid_options:
+              columns: 4
+              rows: 1
+          - type: markdown
+            text_only: true
+            content: "# Controls"
+            grid_options:
+              columns: 4
+              rows: 1
+          - type: markdown
+            text_only: true
+            content: "# Graphs"
+            grid_options:
+              columns: 4
+              rows: 1
+          - type: markdown
+            text_only: true
+            content: "## Displays"
+          - type: grid
+            columns: 1
+            square: false
+            cards:
+              - type: markdown
+                text_only: true
+                content: "## Boardroom TV\n# {{ states('media_player.boardroom_tv') }}"
+              - type: markdown
+                text_only: true
+                content: "## Boardroom TV (2)\n# {{ states('media_player.boardroom_tv_un85du6900fxzc') }}"
+              - type: markdown
+                text_only: true
+                content: "## Office TV\n# {{ states('media_player.chromecast3441') }}"
+              - type: markdown
+                text_only: true
+                content: "## Samsung 8 Series\n# {{ states('media_player.tv_samsung_8_series_82') }}"
+            grid_options:
+              columns: full
+  - title: Graphs
+    path: graphs
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        cards:
+          - type: markdown
+            text_only: true
+            content: "# Sensors"
+            grid_options:
+              columns: 4
+              rows: 1
+          - type: markdown
+            text_only: true
+            content: "# Controls"
+            grid_options:
+              columns: 4
+              rows: 1
+          - type: markdown
+            text_only: true
+            content: "# Graphs"
+            grid_options:
+              columns: 4
+              rows: 1
+          - type: markdown
+            text_only: true
+            content: "## Sensor History"
+          - type: history-graph
+            entities:
+              - entity: sensor.plant_sensor_north_side_temperature
+                name: "Break Area"
+              - entity: sensor.plant_sensor_boardroom_temperature
+                name: "Big Boardroom"
+              - entity: sensor.plant_sensor_dana_temperature
+                name: "R&D Cubicles (Dana)"
+            hours_to_show: 24
+            grid_options:
+              columns: full
+              rows: 4
+          - type: markdown
+            text_only: true
+            content: "## BLE Presence History"
+          - type: history-graph
+            entities:
+              - entity: sensor.bermuda_global_visible_device_count
+                name: "Visible Devices"
+            hours_to_show: 24
+            grid_options:
+              columns: full
+              rows: 4

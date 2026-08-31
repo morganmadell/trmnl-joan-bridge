@@ -1,37 +1,37 @@
 {
-  "_comment": "Starting-point tap-zone config for the 3-page dashboard from Instructions.md. Copy to zones.json and adjust: the 'path' fields must match real Lovelace view URLs on your HA instance, and every rectangle here is a first guess — recalibrate against your actual device using DEBUG_SAVE_SCREENSHOTS and the container logs (they print every tap's coordinates) once you have physical hardware to test against.",
+  "_comment": "Starting-point tap-zone config for the 3-page dashboard from Instructions.md, in the SAME structure/conventions as a real, working zones.json: named page paths (not index-based '/lovelace-joan/0'-style paths), a nav row of zones near the top of every page switching between the 3 pages, and (on the controls page only) additional full-width row zones calling a media_player service. The coordinates below are copied as a plausible-looking starting point from a real, physically-measured 3-page dashboard layout — they are NOT guaranteed to match your dashboard. Pixel positions depend on your exact Lovelace content, card order, and HA frontend version, so every rectangle here MUST be re-measured against your own actual device render before you trust it. Use bridge/tools/measure_zones.ps1 against a real screenshot pulled from your bridge's DEBUG_SAVE_SCREENSHOTS directory (the literal frame your physical panel actually displayed) to find the true y-boundaries, then adjust x-boundaries by reasoning about your own column layout. Also update every 'path' below to match the real Lovelace view URLs on your HA instance, and every entity_id to your own real entities.",
 
   "pages": [
     {
       "name": "sensors",
-      "path": "/lovelace-joan/0",
+      "path": "/lovelace-joan/sensors",
       "zones": [
-        {"x1": 0,   "y1": 0, "x2": 342,  "y2": 80, "action": {"page": "sensors"}},
-        {"x1": 342, "y1": 0, "x2": 683,  "y2": 80, "action": {"page": "controls"}},
-        {"x1": 683, "y1": 0, "x2": 1024, "y2": 80, "action": {"page": "graphs"}}
+        {"x1": 0,   "y1": 40, "x2": 356,  "y2": 118, "action": {"page": "sensors"}},
+        {"x1": 356, "y1": 40, "x2": 668,  "y2": 118, "action": {"page": "controls"}},
+        {"x1": 668, "y1": 40, "x2": 1024, "y2": 118, "action": {"page": "graphs"}}
       ]
     },
     {
       "name": "controls",
-      "path": "/lovelace-joan/1",
+      "path": "/lovelace-joan/controls",
       "zones": [
-        {"x1": 0,   "y1": 0, "x2": 342,  "y2": 80, "action": {"page": "sensors"}},
-        {"x1": 342, "y1": 0, "x2": 683,  "y2": 80, "action": {"page": "controls"}},
-        {"x1": 683, "y1": 0, "x2": 1024, "y2": 80, "action": {"page": "graphs"}},
+        {"x1": 0,   "y1": 40,  "x2": 356,  "y2": 118, "action": {"page": "sensors"}},
+        {"x1": 356, "y1": 40,  "x2": 668,  "y2": 118, "action": {"page": "controls"}},
+        {"x1": 668, "y1": 40,  "x2": 1024, "y2": 118, "action": {"page": "graphs"}},
 
-        {"x1": 0,   "y1": 80,  "x2": 512,  "y2": 419, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.boardroom_tv"}},
-        {"x1": 512, "y1": 80,  "x2": 1024, "y2": 419, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.boardroom_tv_un85du6900fxzc"}},
-        {"x1": 0,   "y1": 419, "x2": 512,  "y2": 758, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.chromecast3441"}},
-        {"x1": 512, "y1": 419, "x2": 1024, "y2": 758, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.tv_samsung_8_series_82"}}
+        {"x1": 0, "y1": 150, "x2": 1024, "y2": 238, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.YOUR_TV_1"}},
+        {"x1": 0, "y1": 238, "x2": 1024, "y2": 326, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.YOUR_TV_2"}},
+        {"x1": 0, "y1": 326, "x2": 1024, "y2": 413, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.YOUR_CHROMECAST"}},
+        {"x1": 0, "y1": 413, "x2": 1024, "y2": 500, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.YOUR_TV_3"}}
       ]
     },
     {
       "name": "graphs",
-      "path": "/lovelace-joan/2",
+      "path": "/lovelace-joan/graphs",
       "zones": [
-        {"x1": 0,   "y1": 0, "x2": 342,  "y2": 80, "action": {"page": "sensors"}},
-        {"x1": 342, "y1": 0, "x2": 683,  "y2": 80, "action": {"page": "controls"}},
-        {"x1": 683, "y1": 0, "x2": 1024, "y2": 80, "action": {"page": "graphs"}}
+        {"x1": 0,   "y1": 40, "x2": 356,  "y2": 118, "action": {"page": "sensors"}},
+        {"x1": 356, "y1": 40, "x2": 668,  "y2": 118, "action": {"page": "controls"}},
+        {"x1": 668, "y1": 40, "x2": 1024, "y2": 118, "action": {"page": "graphs"}}
       ]
     }
   ]

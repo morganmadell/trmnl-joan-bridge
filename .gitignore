@@ -1,5 +1,14 @@
+# Local secrets (HA_TOKEN etc.) — never commit
+.env
+.env.*
+!.env.example
+
 # Compiled binaries
 bin/
+*.exe
+
+# Debug render output (DEBUG_SAVE_SCREENSHOTS)
+debug-screenshots/
 
 # Live MITM captures (device traffic)
 captures/

@@ -212,12 +212,24 @@ func rotateImage(src image.Image, deg int) image.Image {
 // We pre-shift source pixels by this amount so the image appears correctly positioned.
 const colStartOffset = 224
 
-// toPackedGray4 resizes src to PanelW×PanelH, converts to 4-bit grayscale,
-// and packs 2 pixels per byte (high nibble = left pixel). Returns 388096 bytes.
-// Pixels are packed starting at colStartOffset and wrapping, matching the panel's scan order.
+// toPackedGray4 resizes src to PanelW×PanelH, converts to 4-bit grayscale
+// with Floyd-Steinberg dithering, and packs 2 pixels per byte (high nibble =
+// left pixel). Returns 388096 bytes. Pixels are packed starting at
+// colStartOffset and wrapping, matching the panel's scan order.
+//
+// Dithering matters here, not just for photos: a browser anti-aliases small
+// text by blending thin strokes into partial-gray edge pixels. Naive
+// per-pixel rounding to one of 16 gray levels throws that blending away —
+// confirmed on real hardware on 2026-08-29, where large bold headers stayed
+// legible but small tile text turned "jittery," with strokes partly
+// vanishing. Floyd-Steinberg diffuses each pixel's rounding error to its
+// unprocessed neighbors, so a thin stroke's average darkness survives even
+// though every individual pixel is still forced to one of the 16 levels.
 func toPackedGray4(src image.Image) []byte {
 	dst := image.NewNRGBA(image.Rect(0, 0, PanelW, PanelH))
 	draw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
+
+	gray4 := ditherFloydSteinberg(dst)
 
 	packed := make([]byte, PanelW*PanelH/2)
 	p := 0
@@ -225,8 +237,8 @@ func toPackedGray4(src image.Image) []byte {
 		for i := 0; i < PanelW/2; i++ {
 			x0 := (i*2 + colStartOffset) % PanelW
 			x1 := (i*2 + 1 + colStartOffset) % PanelW
-			g0 := to4bit(dst.NRGBAAt(x0, y))
-			g1 := to4bit(dst.NRGBAAt(x1, y))
+			g0 := gray4[y*PanelW+x0]
+			g1 := gray4[y*PanelW+x1]
 			packed[p] = (g0 << 4) | g1
 			p++
 		}
@@ -234,9 +246,57 @@ func toPackedGray4(src image.Image) []byte {
 	return packed
 }
 
-func to4bit(c color.NRGBA) uint8 {
-	gray := color.GrayModel.Convert(c).(color.Gray)
-	return uint8((uint16(gray.Y)*15 + 127) / 255)
+// ditherFloydSteinberg converts src to 4-bit grayscale (0-15 per pixel,
+// PanelW*PanelH entries, row-major in natural left-to-right/top-to-bottom
+// order — the same order the error-diffusion neighbors assume). Must run
+// before colStartOffset packing: the diffusion step needs true screen-adjacent
+// neighbors, not the shifted/wrapped byte order the panel's scan hardware uses.
+func ditherFloydSteinberg(src *image.NRGBA) []uint8 {
+	w, h := PanelW, PanelH
+
+	// Working buffer in 0-255 space, carrying accumulated error between
+	// passes; float32 avoids repeated rounding of the diffused error itself.
+	work := make([]float32, w*h)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			gray := color.GrayModel.Convert(src.NRGBAAt(x, y)).(color.Gray)
+			work[y*w+x] = float32(gray.Y)
+		}
+	}
+
+	out := make([]uint8, w*h)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			i := y*w + x
+			old := work[i]
+			if old < 0 {
+				old = 0
+			} else if old > 255 {
+				old = 255
+			}
+			level := uint8((old*15 + 127) / 255) // nearest of 16 levels
+			out[i] = level
+			quantized := float32(level) * 255 / 15
+			errVal := old - quantized
+
+			// Standard Floyd-Steinberg kernel: right 7/16, bottom-left 3/16,
+			// bottom 5/16, bottom-right 1/16 — skip neighbors that fall off
+			// the edge.
+			if x+1 < w {
+				work[i+1] += errVal * 7 / 16
+			}
+			if y+1 < h {
+				if x > 0 {
+					work[i+w-1] += errVal * 3 / 16
+				}
+				work[i+w] += errVal * 5 / 16
+				if x+1 < w {
+					work[i+w+1] += errVal * 1 / 16
+				}
+			}
+		}
+	}
+	return out
 }
 
 func mustDecodeHex(s string) []byte {

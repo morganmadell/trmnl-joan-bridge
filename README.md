@@ -1,20 +1,21 @@
 # trmnl-joan-bridge (Home Assistant fork)
 
-A standalone Go server that drives a **Joan 6** e-ink display directly —
-with **no Visionect cloud (VSS) dependency** — from either a **Home
-Assistant** dashboard (this fork's default) or a
+A standalone Go server that drives a **Joan 6** panel directly. It needs
+**no Visionect cloud (VSS)**. The bridge renders content from either a
+**Home Assistant** dashboard (this fork's default) or a
 [TRMNL](https://github.com/usetrmnl/byos_hanami) (BYOS) server (the
 upstream project's original mode, still available via `-source=trmnl`).
 
-Forked from [mrfyda/trmnl-joan-bridge](https://github.com/mrfyda/trmnl-joan-bridge)
-as **Path C** of the wider [joan_self_hosted](../README.md) project — see
+This fork comes from [mrfyda/trmnl-joan-bridge](https://github.com/mrfyda/trmnl-joan-bridge).
+It is **Path C** of the wider [joan_self_hosted](../README.md) project. See
 that project's `Instructions.md` and `Protocol_Bypass_Research.md` for the
-full background on why this exists and what's proven vs. still unverified.
+full background: why this project exists, and what is proven versus still
+unverified.
 
-The Joan 6 is a 1024×758 4-bit grayscale e-ink panel with a capacitive
-touchscreen. Out of the box it only talks to Visionect's hosted software. This
-shim reimplements the device-side wire protocol so the panel can be pointed at a
-server you control.
+The Joan 6 panel is a 1024×758, 4-bit grayscale e-ink display with a
+capacitive touchscreen. By default, it only talks to Visionect's hosted
+software. The bridge reimplements the device-side wire protocol, so you can
+point the panel at a server you control.
 
 ```
 ┌─────────┐  PV3 / TCP:11112  ┌───────────────────┐  headless Chromium  ┌───────────────────┐
@@ -29,23 +30,78 @@ server you control.
 
 ## Home Assistant mode (default)
 
-1. **Renders** the current page's Lovelace dashboard with a headless
-   Chromium, authenticated via a long-lived access token injected into the
-   frontend's own `localStorage` scheme (see `ha_render.go` — this is a
-   well-known community pattern, not an officially supported HA API, and
-   hasn't been verified against a live HA frontend as part of this fork; if
-   the screenshot comes back as a login page instead of your dashboard,
-   start there).
-2. **Encodes and serves** the screenshot exactly like the TRMNL path below —
-   same PV3 framing, same partial-update logic.
-3. **Routes taps** through `zones.json` (copy `zones.example.json` and edit
-   it): a tap either switches to a different dashboard page, or calls a Home
-   Assistant service (e.g. `media_player.toggle` on a specific `entity_id`)
-   via HA's REST API using the same access token. Either way, it triggers an
-   immediate re-render so the change shows up right away.
+1. **Renders** the current page's dashboard with a headless Chromium
+   browser. The bridge drives Chromium through the DevTools Protocol
+   (`chromedp`), not a bare CLI screenshot command. It needs this because
+   the authentication step below must run JavaScript against Home
+   Assistant's own page. Authentication injects a long-lived access token
+   into the frontend's own `localStorage` scheme (see `ha_render.go`). This
+   is a well-known community pattern, not an officially supported HA API.
+
+   This method is verified against a live HA frontend: the check confirmed
+   a real rendered dashboard, not just an absence of errors. See this
+   fork's own history in the parent project's `Claude_Work.md` for two real
+   bugs this method caught along the way. First, the token was originally
+   set on the *wrong origin*: a local loopback redirect page, since
+   removed, instead of HA's own page (`localStorage` is per-origin).
+   Second, the token JSON was spliced into `localStorage.setItem(...)` as a
+   bare object literal instead of a string, and JavaScript silently coerced
+   this to `"[object Object]"`. A future HA frontend release could still
+   change how it reads `hassTokens`. So if a screenshot ever comes back as
+   a login page again, start here.
+2. **Hides Home Assistant's own app chrome**: the sidebar, its native
+   per-view tab strip, and the top toolbar. It then widens the dashboard
+   content to fill the full panel. A small, dedicated e-ink display has no
+   use for desktop-browser navigation chrome, and leaving that chrome in
+   place used up about a quarter of the screen's width. The bridge does
+   this with targeted DOM/CSS overrides in `ha_render.go`'s `kioskModeJS`,
+   run just before the screenshot. The exact element and class names it
+   targets are current HA frontend internals, not a stable public API. If
+   a screenshot ever shows the sidebar again after an HA update, check
+   this first.
+3. **Encodes and serves** the screenshot the same way as the TRMNL path
+   below: same PV3 framing, same partial-update logic.
+4. **Routes touches** through `zones.json` (copy `zones.example.json` and
+   edit it to set up your own zones). Each touch either switches to a
+   different dashboard page, or calls a Home Assistant service (for
+   example, `media_player.toggle` on a specific `entity_id`) through HA's
+   REST API, using the same access token. Either way, the bridge then
+   renders the dashboard again immediately, so the change shows up right
+   away.
+
+### Deploying with deploy.sh
+
+The easiest way to run the bridge is `bridge/deploy.sh`:
+
+1. Copy `.env.example` to `.env`.
+2. Fill in `HA_URL` and `HA_TOKEN` (and any other values you want to
+   override — see the table below and the comments in `.env.example`).
+3. From the `bridge/` directory, run `./deploy.sh`.
+
+`deploy.sh` builds the image locally from this directory's `Dockerfile` and
+runs it with `--restart unless-stopped`, mounting `zones.json` and a
+`debug-screenshots` directory into the container. It also removes any
+existing container of the same name first, so re-running it after a code
+change is a safe way to redeploy.
+
+`deploy.sh` also accepts a `--pull` flag, which skips the local build and
+instead pulls a published `ghcr.io` image and runs that. That flag isn't
+useful yet on this branch — only pushes to `main` get built and pushed to
+`ghcr.io` by CI, and this work hasn't merged there yet — but it will be
+once this branch merges.
+
+Create the long-lived access token `.env`'s `HA_TOKEN` needs in Home
+Assistant. Go to your profile (bottom-left avatar), then Security, then
+Long-Lived Access Tokens.
+
+The raw `docker run` invocation below is what `deploy.sh` does under the
+hood. It's still useful if you want to run the container manually, tweak
+the flags yourself, or just see exactly what's happening without reading
+the script:
 
 ```bash
 docker run -d --name trmnl-joan-bridge \
+  --restart unless-stopped \
   -p 11112:11112 \
   -e HA_URL="http://10.218.10.81:8123" \
   -e HA_TOKEN="your-ha-long-lived-access-token" \
@@ -53,45 +109,77 @@ docker run -d --name trmnl-joan-bridge \
   ghcr.io/<your-fork>/trmnl-joan-bridge:latest
 ```
 
-Create the long-lived access token in Home Assistant under your profile
-(bottom-left avatar) → Security → Long-Lived Access Tokens.
+> That `ghcr.io/<your-fork>/...` tag assumes a published image already
+> exists. That isn't yet true for this branch — CI only builds and pushes
+> `main` to `ghcr.io`. Use `./deploy.sh` (without `--pull`) to build and run
+> this branch locally today.
+
+`--restart unless-stopped` matters here more than on a typical container.
+As of 2026-08-31, the bridge has an unresolved, intermittent crash
+(`ExitCode 2`, a Go unhandled panic, no trace captured in `docker logs`
+yet) that shows up within seconds of a real device connection or image
+ACK. This flag makes Docker bring the container back up within a couple
+of seconds of any such crash, instead of leaving the panel unable to
+reach it until someone notices. It does not fix the underlying bug — see
+TODO.md's "Known unverified or risky areas" for the current state of that
+investigation.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `HA_URL` | yes | — | Home Assistant base URL, e.g. `http://10.218.10.81:8123` |
 | `HA_TOKEN` | yes | — | Long-lived access token |
-| `ZONES_FILE` | no | `zones.json` | Page/tap-zone config — see `zones.example.json` |
+| `ZONES_FILE` | no | `zones.json` | Page and zone config — see `zones.example.json` |
 | `CHROMIUM_BIN` | no | `chromium` (`headless-shell` in the Dockerfile) | Browser executable name/path |
-| `RENDER_WAIT_MS` | no | `4000` | Time to let the dashboard load before screenshotting |
-| `DEBUG_SAVE_SCREENSHOTS` | no | — | If set, a directory to save the latest render to, for troubleshooting |
+| `RENDER_WAIT_MS` | no | `4000` | Time to let the dashboard load before the bridge renders it |
+| `DEBUG_SAVE_SCREENSHOTS` | no | — | If set, a directory where the bridge saves the latest screenshot, for diagnosis |
+
+## Importing the dashboard
+
+The Home Assistant dashboard this bridge renders isn't included by
+default — Home Assistant dashboards live in your own instance, so you
+need to create or import one there before HA mode has anything meaningful
+to show. This repository includes a real, working, exported example of
+exactly the 3-page Sensors/Controls/Graphs layout this project actually
+uses in production, at
+[`bridge/dashboard/lovelace-joan.yaml`](dashboard/lovelace-joan.yaml). Full
+import instructions and a customization checklist (which entities you must
+replace with your own before it will show real data) are in
+[`bridge/dashboard/README.md`](dashboard/README.md) — see that file rather
+than duplicating the steps here.
 
 ## TRMNL mode (`-source=trmnl` / `SOURCE=trmnl`, upstream behavior)
 
-The original upstream mode, unchanged and still fully supported.
+This is the original upstream mode. It is unchanged, and the bridge still
+fully supports it.
 
-1. **Polls TRMNL** on the standard TRMNL device protocol: `GET /api/display`
-   with `ID` (the device MAC) and `Access-Token` headers. TRMNL replies with
-   an `image_url` and a `refresh_rate`.
-2. **Fetches and encodes** the image into a Visionect **PV3** frame: resize to
-   1024×758, convert to 4-bit grayscale, pack 2 px/byte, split into 80
-   LZ4-compressed blocks, and wrap with the device descriptor and headers.
-3. **Serves the panel** over raw TCP on port 11112. Joan opens a connection and
-   sends a status "hello" roughly every 3 minutes; the shim replies with a
-   session ACK and, when the image is new, the frame. When only part of the
-   screen changed it sends a **partial update** — just the changed rectangle, so
-   the panel does a fast, flicker-free local refresh instead of a full repaint; a
-   whole-screen change (or the first push after a (re)connect) sends a full frame.
-   See [`docs/partial-updates.md`](docs/partial-updates.md).
-4. **Reports device health.** The status hello also carries battery voltage and
-   WiFi RSSI; the shim parses them and forwards them to TRMNL as the standard
-   `Battery-Voltage` and `RSSI` headers, so battery and signal appear in the
-   TRMNL device dashboard. See [`docs/status-hello.md`](docs/status-hello.md).
+1. **Polls TRMNL** using the standard TRMNL device protocol: `GET
+   /api/display` with `ID` (the device MAC) and `Access-Token` headers.
+   TRMNL replies with an `image_url` and a `refresh_rate`.
+2. **Fetches and encodes** the image as a Visionect **PV3** frame. The
+   bridge resizes it to 1024×758, converts it to 4-bit grayscale, packs 2
+   pixels per byte, splits it into 80 LZ4-compressed blocks, and wraps it
+   with the device descriptor and headers.
+3. **Serves the panel** over raw TCP on port 11112. The panel opens a
+   connection and sends a status Hello roughly every 3 minutes. The bridge
+   replies with a session ACK, and, when the image is new, the frame. When
+   only part of the screen changed, the bridge sends a **partial update**:
+   just the changed rectangle, so the panel does a fast, flicker-free
+   local refresh instead of a full repaint. A whole-screen change, or the
+   first push after a (re)connect, sends a full frame. See
+   [`docs/partial-updates.md`](docs/partial-updates.md).
+4. **Reports device health.** The status Hello also carries battery
+   voltage and WiFi RSSI. The bridge parses these values and forwards them
+   to TRMNL as the standard `Battery-Voltage` and `RSSI` headers. So
+   battery and signal appear on the TRMNL device dashboard. See
+   [`docs/status-hello.md`](docs/status-hello.md).
 
-The PV3 wire format, block layout, and session handshake were reverse-engineered
-from captured device traffic; see `docs/` for the protocol notes.
+The upstream project reverse-engineered the PV3 wire format, block layout,
+and session handshake from captured device traffic. See `docs/` for the
+protocol notes.
 
 ```bash
 docker run -d --name trmnl-joan-bridge \
+  --restart unless-stopped \
   -p 11112:11112 \
   -e SOURCE=trmnl \
   -e TRMNL_SERVER="http://your-trmnl-host:2300" \
@@ -100,100 +188,153 @@ docker run -d --name trmnl-joan-bridge \
   ghcr.io/<your-fork>/trmnl-joan-bridge:latest
 ```
 
+> As above, that `ghcr.io/<your-fork>/...` tag assumes a published image —
+> not yet true for this branch (CI only pushes `main` to `ghcr.io`). Build
+> and run locally instead; `./deploy.sh` (see the Home Assistant mode
+> section above) works for either mode, since it just builds this
+> directory's `Dockerfile` and reads `SOURCE` from `.env`.
+
 | Variable           | Required | Default   | Description                                                        |
 | ------------------ | -------- | --------- | ------------------------------------------------------------------ |
 | `TRMNL_SERVER`     | yes      | —         | TRMNL base URL, e.g. `http://192.168.1.10:2300`                 |
-| `DEVICE_ID`        | yes      | —         | Joan MAC address, **uppercase**, e.g. `AA:BB:CC:DD:EE:FF`          |
+| `DEVICE_ID`        | yes      | —         | Panel MAC address, **uppercase**, e.g. `AA:BB:CC:DD:EE:FF`          |
 | `ACCESS_TOKEN`     | yes      | —         | TRMNL device access token                                       |
 
-> The `DEVICE_ID` must be uppercase — TRMNL rejects lowercase MACs with
+> `DEVICE_ID` must be uppercase. TRMNL rejects lowercase MACs with
 > `Invalid device ID`.
 
 ## Pointing the panel at this bridge (either mode)
 
-Once the container is running, point the physical Joan-6 at it with the
-**Visionect Configurator** app (USB) or the device's own serial console
-(`server_tcp_set <bridge-ip> 11112`) — see the parent project's
-Instructions.md for the full walkthrough. No Visionect account or VSS
-instance is involved in either mode.
+Once the container is running, point the physical Joan-6 panel at it. Use
+the **Visionect Configurator** app over USB, or the device's own serial
+console (`server_tcp_set <bridge-ip> 11112`). See the parent project's
+Instructions.md for the full walkthrough. Neither mode needs a Visionect
+account or a VSS instance.
 
 ## Running on Windows via WSL2 (initial testing)
 
 Initial testing runs the bridge on the Windows machine itself, inside WSL2
-(via the Host Compute Service), rather than a separate Docker host — the
-bridge and its `chromedp/headless-shell` dependency are Linux-only, so WSL2
-(a real Linux kernel/environment) rather than native Windows containers is
-the right target. Build and run exactly as documented above, from inside
-your WSL2 distro's shell (it has its own Docker, or install one — Docker
-Desktop's WSL2 backend also works if you already have it).
+(through the Host Compute Service), instead of on a separate Docker host.
+The bridge and its `chromedp/headless-shell` dependency are Linux-only. So
+WSL2, a real Linux kernel and environment, is the right target, not native
+Windows containers. Build and run the bridge exactly as documented above,
+from inside your WSL2 distro's shell. That shell has its own Docker, or
+you can install one; Docker Desktop's WSL2 backend also works if you
+already have it.
 
-**The one thing this setup changes: inbound network reachability.** WSL2's
-default NAT networking puts the container behind a virtual subnet that other
-devices on your physical LAN — including the Joan-6 on `Turing-Corp` —
-generally cannot reach directly at `<windows-host-lan-ip>:11112`. This only
-affects that one inbound direction (the device dialing into the bridge);
-`HA_URL` calls going the other way, out to Home Assistant (which runs bare
-metal on its own Raspberry Pi 4, a normal directly-addressable LAN device at
-`10.218.10.81`), are outbound from WSL2 and work with no special
-configuration regardless of which option below you pick. Two ways to fix the
-inbound side, in order of preference:
+**This setup changes one thing: inbound network reachability.** WSL2's
+default NAT networking puts the container behind a virtual subnet. Other
+devices on your physical LAN, including the Joan-6 panel on
+`Turing-Corp`, generally cannot reach the container directly at
+`<windows-host-lan-ip>:11112`. This only affects that one inbound
+direction: the device dialing into the bridge. `HA_URL` calls go the other
+way, out to Home Assistant. Home Assistant runs bare metal on its own
+Raspberry Pi 4, a normal, directly addressable LAN device at
+`10.218.10.81`. These outbound calls work from WSL2 with no special
+configuration, regardless of which option below you pick. There are two
+ways to fix the inbound side, in order of preference:
 
-1. **WSL2 mirrored networking mode** (WSL >= 2.0, Windows 11 22H2+): add to
-   `%UserProfile%\.wslconfig`:
+1. **WSL2 mirrored networking mode** (WSL >= 2.0, Windows 11 22H2+). Add
+   this to `%UserProfile%\.wslconfig`:
    ```ini
    [wsl2]
    networkingMode=mirrored
+
+   [experimental]
+   hostAddressLoopback=true
    ```
-   then `wsl --shutdown` and restart your distro. This makes WSL2 share the
-   Windows host's network interface directly — a port the bridge listens on
-   inside WSL2 becomes reachable at the Windows machine's own LAN IP with no
-   further steps. Verify with `ip addr` inside WSL2: you should see the same
-   IP your Windows host uses on the LAN, not a `172.x` NAT address.
-2. **Port proxy + firewall rule** (older WSL2, or if mirrored mode isn't
-   available): from an elevated Windows PowerShell,
+   Then run `wsl --shutdown` and restart your distro. This makes WSL2
+   share the Windows host's network interface directly. Verify this with
+   `ip addr` inside WSL2. Check that the IP matches the one your Windows
+   host uses on the LAN, not a `172.x` NAT address.
+
+   **Two more steps are needed, confirmed on this project on 2026-08-28
+   after `networkingMode=mirrored` alone was not enough:**
+
+   - **`hostAddressLoopback=true`, shown above, is required.** Without it,
+     a port bound inside WSL2 (with or without Docker) stays unreachable
+     from the Windows host at the shared LAN IP, even though the IP
+     address itself is correctly shared and the port is reachable from
+     inside WSL2 on that same IP. With it, the port becomes reachable from
+     the Windows host, which sits on the same LAN segment the Joan-6 panel
+     does. This setting needs a `wsl --shutdown` and restart to take
+     effect, the same as `networkingMode`.
+   - **A firewall rule is still required.** Mirrored mode does not bypass
+     Windows Firewall's inbound inspection for the shared interface. Run
+     this from an elevated Windows PowerShell, once:
+     ```powershell
+     New-NetFirewallRule -DisplayName "Joan bridge (11112)" -Direction Inbound -LocalPort 11112 -Protocol TCP -Action Allow
+     ```
+     Unlike the port-proxy command below, this rule does not depend on the
+     WSL2 IP, so it does not need to run again after a reboot.
+
+   **A note on testing this yourself:** connecting to your own LAN IP from
+   the same Windows machine (self-connect) works fine for a normal,
+   natively-bound Windows program, so it is a valid way to test this
+   setup — do not assume a failure there is just a self-connect quirk.
+   A genuinely separate device on the LAN is still the strongest test,
+   since it is what the panel itself will do.
+2. **Port proxy and firewall rule** (older WSL2, or use this if mirrored
+   mode is not available). Run this from an elevated Windows PowerShell:
    ```powershell
    $wslIp = (wsl hostname -I).Trim().Split()[0]
    netsh interface portproxy add v4tov4 listenport=11112 listenaddress=0.0.0.0 connectport=11112 connectaddress=$wslIp
    New-NetFirewallRule -DisplayName "Joan bridge (11112)" -Direction Inbound -LocalPort 11112 -Protocol TCP -Action Allow
    ```
-   Re-run the `portproxy add` command (with the new WSL IP) any time the WSL2
-   VM's internal address changes, e.g. after a reboot — it isn't guaranteed
-   stable across restarts in NAT mode.
+   Run the `portproxy add` command again, with the new WSL IP, any time
+   the WSL2 VM's internal address changes — for example, after a reboot.
+   In NAT mode, this address is not guaranteed to stay stable across
+   restarts.
 
 Either way, confirm reachability from another device on `Turing-Corp` (or
-just from the Windows host's own LAN-facing IP) before assuming the Joan-6's
-failure to connect is a bridge or protocol problem rather than a networking
-one.
+from the Windows host's own LAN-facing IP). Do this before you assume the
+Joan-6 panel's failure to connect is a bridge or protocol problem. It can
+simply be a networking problem instead.
 
 ## Shared configuration (both modes)
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `SOURCE` | no | `ha` | `ha` or `trmnl` |
-| `REFRESH_INTERVAL` | no | `60s` | Fallback re-render/re-fetch interval |
+| `REFRESH_INTERVAL` | no | `60s` | Fallback interval: how often to render or fetch again |
 | `LISTEN_ADDR` | no | `:11112` | TCP address the panel connects to |
 
 ## Troubleshooting and touch calibration
 
-**Render looks wrong or is a login screen.** Set `DEBUG_SAVE_SCREENSHOTS` to
-a directory (bind-mount it) and inspect `latest-render.png` after a render.
-A login page means the `hassTokens` auth injection in `ha_render.go` needs
-fixing for your HA frontend version; a rendered-but-wrong-looking dashboard
-is a Lovelace layout/CSS issue, not a bridge bug.
+**The screenshot looks wrong, or is a login screen.** Set
+`DEBUG_SAVE_SCREENSHOTS` to a directory (bind-mount it), and inspect
+`latest-render.png` after the bridge renders the dashboard. This auth path
+is verified working, as of this fork. So a login page now most likely
+means something changed in your HA frontend version, not a fresh bug. See
+`ha_render.go`'s `renderDashboard` comment for what to check. If the
+dashboard renders but looks wrong, that is a Lovelace layout or CSS issue,
+not a bridge bug.
 
-**Calibrating touch zones.** Every tap logs both the flipped display-space
-coordinates and the raw wire coordinates, e.g. `tap (dispX,dispY) [raw x,y]
-hit no zone on page "name"` (or the zone/action it matched) — watch
-`docker logs -f` while tapping different areas of the real screen to see
-where taps actually land relative to what's on screen, then adjust
-`zones.json`'s rectangles to match. Start with just the top nav bar until
-paging works reliably before calibrating the rest. If taps consistently land
-offset from where you'd expect, that points at the 180°-flip constant in
-`ha_client.go`'s `onTouch` rather than the zone rectangles themselves — the
-logged raw vs. flipped coordinates tell you which one is off. If a tap seems
-to do nothing at all, cross-checking the device's own serial/diagnostic
-console (see `docs/`) alongside the bridge logs tells you whether the
-device ever sent it in the first place.
+**Touch zone calibration.** Every touch logs both the flipped
+display-space coordinates and the raw wire coordinates, for example: `tap
+(dispX,dispY) [raw x,y] hit no zone on page "name"` (or the zone or action
+it matched). Watch `docker logs -f` while you tap different areas of the
+real screen, to see where each touch actually lands relative to what is on
+screen. Then adjust the rectangles in `zones.json` to match. Start with
+just the top nav bar, and confirm paging works reliably, before you
+calibrate the rest. If touches consistently land offset from where you
+expect, that points to the 180°-flip constant in `ha_client.go`'s
+`onTouch`, not the zone rectangles themselves. The logged raw and flipped
+coordinates tell you which one is wrong. If a touch seems to do nothing at
+all, check the device's own serial or diagnostic console (see `docs/`)
+alongside the bridge logs. Together, they tell you whether the device
+sent the touch at all.
+
+**Re-measuring zones after a layout change.**
+[`bridge/tools/measure_zones.ps1`](tools/measure_zones.ps1) formalizes the
+technique above for finding the touch-zone y-boundaries: it pixel-scans a
+real screenshot for text-block boundaries using a luminance threshold, and
+prints the resulting y-ranges as candidate zone boundaries. Point its
+`-ImagePath` parameter at a real `DEBUG_SAVE_SCREENSHOTS` capture — the
+actual frame that was pushed to and ACKed by the physical panel — not a
+fresh, unrelated render, since layout can shift between renders (card
+order, entity state, HA frontend version). Use `bridge/zones.example.json`
+as the structural template for the resulting `zones.json`.
 
 ## Building from source
 
@@ -212,25 +353,31 @@ make build-arm     # static linux/arm64 binary → bin/trmnl-joan-bridge
 docker build -t trmnl-joan-bridge .
 ```
 
-> **This fork's code has not yet been compiled or run** — it was written
-> without a local Go toolchain available. `go build`/`go vet`/`go test` above
-> is the first thing to run before trusting any of it; see the parent
-> project's Claude_Work.md for the full caveat.
+> `go build`, `go vet`, and `go test` all pass clean. The HA render-and-auth
+> path, and the touch/zone dispatch, are both verified end-to-end against a
+> real Home Assistant instance (a native Windows binary plus a local
+> Chrome; that part needs no Docker or WSL2). See the parent project's
+> `Claude_Work.md` for the full history. Two things are still unverified:
+> the Docker image itself (never built, since no local Docker or WSL2 is
+> available yet), and everything that needs the physical Joan-6 panel (the
+> image-push protocol on *this* device, and real touch-coordinate
+> reporting).
 
 ## Hardware notes
 
 - **Panel:** Joan 6 — 1024×758, 4-bit grayscale e-ink, capacitive touch.
 - **Transport:** Visionect PV3 over TCP port 11112.
-- **Rotation:** the encoder applies a fixed 180° rotation to match this panel's
-  scan orientation — `ha_client.go`'s `onTouch` un-rotates tap coordinates
-  before hit-testing zones.
+- **Rotation:** the encoder applies a fixed 180° rotation to match this
+  panel's scan orientation. `ha_client.go`'s `onTouch` un-rotates the
+  touch coordinates before it hit-tests them against the zones.
 
 ## Repository layout
 
 ```
 main.go          TCP server, content-source selection, frame store, heartbeat loop
 ha_client.go     Home Assistant content source: page state, tap routing, HA service calls
-ha_render.go     Headless-Chromium screenshot + local HA auth-redirect page
+ha_render.go     Headless-Chromium screenshot (via chromedp/CDP): HA auth
+                 injection + kiosk-mode chrome hiding
 ha_zones.go      zones.json (page/tap-zone config) loading and hit-testing
 zones.example.json  Starting-point zone config matching the parent project's 3-page dashboard
 pv3/             PV3 wire protocol: framing + decode, full & partial frame encode, session ACK
@@ -242,8 +389,9 @@ Dockerfile       multi-stage build → chromedp/headless-shell runtime image
 
 ## Acknowledgements
 
-Upstream [mrfyda/trmnl-joan-bridge](https://github.com/mrfyda/trmnl-joan-bridge)
-was built by reverse-engineering the Visionect device protocol purely for
+The upstream project,
+[mrfyda/trmnl-joan-bridge](https://github.com/mrfyda/trmnl-joan-bridge),
+reverse-engineered the Visionect device protocol purely for
 interoperability, to keep a perfectly good display out of a landfill. This
-fork adapts it to a different content source; all of the hard
-protocol-level work is upstream's.
+fork adapts it to a different content source. All of the hard
+protocol-level work belongs to the upstream project.

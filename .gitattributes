@@ -1,0 +1,18 @@
+# Force LF line endings for files that must stay executable as scripts,
+# regardless of the cloning machine's Windows/git autocrlf setting.
+# Without this, a Windows checkout can silently convert deploy.sh's line
+# endings to CRLF, which breaks it under WSL2/Linux bash with a
+# "bad interpreter" error on the shebang line.
+*.sh text eol=lf
+Dockerfile text eol=lf
+Makefile text eol=lf
+
+# PowerShell scripts are fine with either; Windows PowerShell handles LF,
+# but keep them native so they diff cleanly on Windows checkouts.
+*.ps1 text eol=native
+
+# JSON/YAML/Markdown: normalize to LF in the repo, let git decide on checkout.
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
