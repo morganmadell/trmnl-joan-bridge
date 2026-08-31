@@ -205,11 +205,11 @@ docker run -d --name trmnl-joan-bridge \
 
 ## Pointing the panel at this bridge (either mode)
 
-Once the container is running, point the physical Joan-6 panel at it. Use
-the **Visionect Configurator** app over USB, or the device's own serial
-console (`server_tcp_set <bridge-ip> 11112`). See the parent project's
-Instructions.md for the full walkthrough. Neither mode needs a Visionect
-account or a VSS instance.
+Once the container is running, point the physical Joan-6 panel at it. The
+full walkthrough — the physical USB connection, finding the device, the
+serial console commands, a script that automates it, and how to verify
+success — lives in [PAIRING.md](PAIRING.md). Neither mode needs a
+Visionect account or a VSS instance.
 
 ## Running on Windows via WSL2 (initial testing)
 
