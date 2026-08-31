@@ -92,9 +92,10 @@ The `RectangleHeader` above is the region descriptor. The tail is the last
 
 ## How the bridge builds a frame
 
-`pv3/encode.go` regenerates the pre-header for every frame. It combines
-`preHeaderHdr84`, the 84-byte header fixed for this panel, with the image's
-real tail pixels, `packed[383376:388096]`, sent raw, and sets
+`pv3/encode.go` regenerates the pre-header for every frame. `buildPreHeader`
+combines the fixed 84-byte header (60-byte `preamble` plus a 24-byte
+`rectHeader(r)`) with the image's real tail pixels,
+`packed[383376:388096]`, sent raw, and sets
 `Options = len − 4`. The bridge LZ4-compresses the 80 blocks, but sends the
 tail raw. The panel accepts a raw tail; VSS itself sends raw data for
 content it cannot compress well. This is why the bottom 9 rows show live

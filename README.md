@@ -130,7 +130,7 @@ on `main` since 2026-08-31, and `.github/workflows/ci.yml` publishes to
 packages can default to **private** visibility separately from the source
 repo's own visibility, so `--pull` can fail with an authentication error
 until that's confirmed. If it does, check (or fix) the package's visibility
-at `github.com/users/morganmadell/packages/container/trmnl-joan-bridge` →
+from your GitHub profile → Packages tab → find `trmnl-joan-bridge` →
 Package settings → Change visibility (or Settings → Packages on the repo
 itself). Use `./deploy.sh` (without `--pull`) to build locally in the
 meantime — it always works regardless of package visibility.
@@ -411,12 +411,12 @@ docker build -t trmnl-joan-bridge .
 > `go build`, `go vet`, and `go test` all pass clean. The HA render-and-auth
 > path, and the touch/zone dispatch, are both verified end-to-end against a
 > real Home Assistant instance (a native Windows binary plus a local
-> Chrome; that part needs no Docker or WSL2). See the parent project's
-> `Claude_Work.md` for the full history. Two things are still unverified:
-> the Docker image itself (never built, since no local Docker or WSL2 is
-> available yet), and everything that needs the physical Joan-6 panel (the
-> image-push protocol on *this* device, and real touch-coordinate
-> reporting).
+> Chrome; that part needs no Docker or WSL2). The Docker image itself has
+> been built and run for a long time now (see "Running on Windows via
+> WSL2" above), and both the image-push protocol and real touch-coordinate
+> reporting are verified against the physical Joan-6 panel — see
+> [`PAIRING.md`](PAIRING.md) for the pairing sessions themselves, and the
+> parent project's `TODO.md` and `Claude_Work.md` for the full history.
 
 ## Hardware notes
 
