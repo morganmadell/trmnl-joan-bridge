@@ -1,6 +1,6 @@
 # What we learned from static analysis of the VSS image
 
-The public `visionect/visionect-server-v3:8.5.5-arm` Docker image gives us a
+The public `visionect/visionect-server-v3:7.6.5` Docker image gives us a
 lot of information about how Joan panels talk to VSS. Three mistakes in how
 Visionect shipped this image help us:
 
@@ -85,7 +85,7 @@ capture an authoritative transcript between VSS and the panel.
 mkdir -p /tmp/vss-analysis
 container run --rm --entrypoint /bin/sh \
   --mount type=bind,source=/tmp/vss-analysis,target=/host \
-  visionect/visionect-server-v3:8.5.5-arm \
+  visionect/visionect-server-v3:7.6.5 \
   -c 'cp /opt/visionect/vss/bin/{networkmanager,gateway,engine} /host/'
 
 # Functions in the `device` package, etc.

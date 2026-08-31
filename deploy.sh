@@ -3,14 +3,19 @@
 #
 # Usage:
 #   ./deploy.sh          Build the image locally from this directory's
-#                         Dockerfile and run it. This is the correct default
-#                         today: no ghcr.io image is published for this
-#                         branch, only for pushes to main.
+#                         Dockerfile and run it. Always works regardless of
+#                         whether a ghcr.io image is published/reachable.
 #   ./deploy.sh --pull    Skip the local build and instead pull
 #                         ghcr.io/morganmadell/trmnl-joan-bridge:latest and
-#                         run that. Documented future path: use this once
-#                         this branch has merged to main and CI has
-#                         published an image for it.
+#                         run that. This code has been on main since
+#                         2026-08-31 and CI (.github/workflows/ci.yml)
+#                         publishes to ghcr.io on every push to main, so a
+#                         build likely exists — but GHCR packages can default
+#                         to private visibility separately from the source
+#                         repo's own visibility, so this can fail with an
+#                         auth error until that's confirmed/fixed at
+#                         github.com/users/morganmadell/packages/container/trmnl-joan-bridge
+#                         -> Package settings -> Change visibility.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -96,7 +101,7 @@ docker run -d \
   -p 11112:11112 \
   --env-file .env \
   -v "$(pwd)/zones.json:/app/zones.json" \
-  -v "$(pwd)/debug-screenshots:/app/debug" \
+  -v "$(pwd)/debug-screenshots:/app/debug-screenshots" \
   "$RUN_IMAGE"
 
 echo

@@ -19,8 +19,11 @@ one of these:
 
 - **Hello** — the status heartbeat the panel sends roughly every 3 minutes.
   It carries device telemetry: battery, signal, and charge.
-- **Touch** — a single touch event. It carries panel coordinates. The
-  bridge treats every touch as "advance the playlist".
+- **Touch** — a single touch event. It carries panel coordinates. In
+  **SOURCE=trmnl mode only**, the bridge treats every touch as "advance the
+  playlist". In SOURCE=ha mode (this fork's default), a touch is instead
+  un-rotated and hit-tested against **Zones** — see the Page/Zone/Action
+  entries below.
 - **Image ACK** — the panel's acknowledgement that it rendered a pushed
   **Frame**.
 - **Unknown** — a well-formed but unrecognized message. The bridge carries
@@ -67,9 +70,32 @@ with a Session ACK, plus a Frame when the image is new.
 
 ## Playlist
 
-The ordered set of screens TRMNL rotates through. Each TRMNL poll advances
-the playlist. A **Touch** triggers an extra poll, so it shows the next
-screen.
+**SOURCE=trmnl mode only.** The ordered set of screens TRMNL rotates
+through. Each TRMNL poll advances the playlist. A **Touch** triggers an
+extra poll, so it shows the next screen.
+
+## Page
+
+**SOURCE=ha mode.** A named dashboard view the bridge can display — for
+example `sensors`. Each Page has a URL path (appended to `HA_URL`) and its
+own set of tappable **Zones**. The bridge tracks one current Page at a
+time and re-renders it on a fixed cadence, or immediately after a **Touch**
+changes it or triggers an **Action**. See `ha_zones.go`.
+
+## Zone
+
+**SOURCE=ha mode.** A rectangle, in display coordinates, defined in
+`zones.json` for one Page. A **Touch** that lands inside a Zone triggers
+that Zone's **Action**; a Touch outside every Zone on the current Page does
+nothing. See `ha_zones.go`'s `hit`.
+
+## Action
+
+**SOURCE=ha mode.** What a **Zone** dispatches to when tapped: either
+switching the current **Page** to a different one, or calling a Home
+Assistant service (a domain/service/entity triple, e.g.
+`media_player.toggle` on a specific `entity_id`) through HA's REST API. See
+`ha_client.go`'s `onTouch` and `callService`.
 
 ## Telemetry
 

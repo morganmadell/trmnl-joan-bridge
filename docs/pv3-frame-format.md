@@ -38,8 +38,10 @@ Everything after the `ProtocolHeader` makes up its `Length` bytes. The
 
 **dataBlock** — 24-B header + data: `BlockID`(u32, 1-based), `BlockLast`(u32,
 = NrPrimitives), `compSize`(u32), `rawSize`(u32), 8 B pad, then `compSize`
-bytes of LZ4 data. Walking through 80 of these blocks consumes exactly
-`Length` bytes.
+bytes of LZ4 data. If LZ4 does not actually shrink a given chunk, the block
+stores that chunk's data raw/uncompressed instead (`compSize == rawSize` in
+that case). Walking through 80 of these blocks consumes exactly `Length`
+bytes.
 
 **RectangleHeader** — 24 B, the **last 24 bytes of the pre-header header** in
 every frame (not just partials): `ImageType`(u16, 1=Gray), `ScreenID`(u16),

@@ -124,19 +124,27 @@ existing container of the same name first, so re-running it after a code
 change is a safe way to redeploy.
 
 `deploy.sh` also accepts a `--pull` flag, which skips the local build and
-instead pulls a published `ghcr.io` image and runs that. That flag isn't
-useful yet on this branch — only pushes to `main` get built and pushed to
-`ghcr.io` by CI, and this work hasn't merged there yet — but it will be
-once this branch merges.
+instead pulls a published `ghcr.io` image and runs that. This code has been
+on `main` since 2026-08-31, and `.github/workflows/ci.yml` publishes to
+`ghcr.io` on every push to `main`, so a build likely exists. But GHCR
+packages can default to **private** visibility separately from the source
+repo's own visibility, so `--pull` can fail with an authentication error
+until that's confirmed. If it does, check (or fix) the package's visibility
+at `github.com/users/morganmadell/packages/container/trmnl-joan-bridge` →
+Package settings → Change visibility (or Settings → Packages on the repo
+itself). Use `./deploy.sh` (without `--pull`) to build locally in the
+meantime — it always works regardless of package visibility.
 
 Create the long-lived access token `.env`'s `HA_TOKEN` needs in Home
 Assistant. Go to your profile (bottom-left avatar), then Security, then
 Long-Lived Access Tokens.
 
-The raw `docker run` invocation below is what `deploy.sh` does under the
-hood. It's still useful if you want to run the container manually, tweak
-the flags yourself, or just see exactly what's happening without reading
-the script:
+The raw `docker run` invocation below is a simplified illustration of what
+`deploy.sh` does, not a literal equivalent — `deploy.sh` also mounts
+`debug-screenshots` and uses `--env-file .env` (which picks up every
+variable you've set, not just the two shown here). It's still useful if you
+want to run the container manually, tweak the flags yourself, or just see
+roughly what's happening without reading the script:
 
 ```bash
 docker run -d --name trmnl-joan-bridge \
@@ -149,9 +157,10 @@ docker run -d --name trmnl-joan-bridge \
 ```
 
 > That `ghcr.io/<your-fork>/...` tag assumes a published image already
-> exists. That isn't yet true for this branch — CI only builds and pushes
-> `main` to `ghcr.io`. Use `./deploy.sh` (without `--pull`) to build and run
-> this branch locally today.
+> exists. This code has been on `main` since 2026-08-31 and CI builds and
+> pushes `main` to `ghcr.io`, so an image likely exists — but see the
+> `--pull` note above about GHCR package visibility before relying on it.
+> `./deploy.sh` (without `--pull`) builds and runs locally either way.
 
 `--restart unless-stopped` matters here more than on a typical container.
 As of 2026-08-31, the bridge has an unresolved, intermittent crash
@@ -212,9 +221,13 @@ fully supports it.
    battery and signal appear on the TRMNL device dashboard. See
    [`docs/status-hello.md`](docs/status-hello.md).
 
-The upstream project reverse-engineered the PV3 wire format, block layout,
-and session handshake from captured device traffic. See `docs/` for the
-protocol notes.
+The upstream project supplied the original Go implementation of the PV3
+wire format, block layout, and session handshake. Most of the protocol
+notes in `docs/` are this project's own subsequent research — DWARF-based
+binary disassembly, MITM capture analysis, and VSS server binary
+inspection — going beyond what upstream's own documentation covers. See
+`docs/` for the protocol notes, and "Acknowledgements" below for the full
+attribution.
 
 ```bash
 docker run -d --name trmnl-joan-bridge \
@@ -228,10 +241,12 @@ docker run -d --name trmnl-joan-bridge \
 ```
 
 > As above, that `ghcr.io/<your-fork>/...` tag assumes a published image —
-> not yet true for this branch (CI only pushes `main` to `ghcr.io`). Build
-> and run locally instead; `./deploy.sh` (see the Home Assistant mode
-> section above) works for either mode, since it just builds this
-> directory's `Dockerfile` and reads `SOURCE` from `.env`.
+> this code has been on `main` since 2026-08-31 and CI pushes `main` to
+> `ghcr.io`, but see the `--pull` note in the Home Assistant mode section
+> above about GHCR package visibility before relying on it. `./deploy.sh`
+> (see the Home Assistant mode section above) builds and runs locally for
+> either mode, since it just builds this directory's `Dockerfile` and reads
+> `SOURCE` from `.env`.
 
 | Variable           | Required | Default   | Description                                                        |
 | ------------------ | -------- | --------- | ------------------------------------------------------------------ |
@@ -352,10 +367,11 @@ not a bridge bug.
 **Touch zone calibration.** Every touch logs both the flipped
 display-space coordinates and the raw wire coordinates, for example: `tap
 (dispX,dispY) [raw x,y] hit no zone on page "name"` (or the zone or action
-it matched). Watch `docker logs -f` while you tap different areas of the
-real screen, to see where each touch actually lands relative to what is on
-screen. Then adjust the rectangles in `zones.json` to match. Start with
-just the top nav bar, and confirm paging works reliably, before you
+it matched). Watch `docker logs -f trmnl-joan-bridge` while you tap
+different areas of the real screen, to see where each touch actually lands
+relative to what is on screen. Then adjust the rectangles in `zones.json`
+to match. Start with just the top nav bar, and confirm paging works
+reliably, before you
 calibrate the rest. If touches consistently land offset from where you
 expect, that points to the 180°-flip constant in `ha_client.go`'s
 `onTouch`, not the zone rectangles themselves. The logged raw and flipped
@@ -420,10 +436,13 @@ ha_render.go     Headless-Chromium screenshot (via chromedp/CDP): HA auth
 ha_zones.go      zones.json (page/tap-zone config) loading and hit-testing
 zones.example.json  Starting-point zone config matching the parent project's 3-page dashboard
 pv3/             PV3 wire protocol: framing + decode, full & partial frame encode, session ACK
-docs/            reverse-engineered protocol notes (upstream)
+docs/            reverse-engineered protocol notes — mostly this project's own original
+                 research (DWARF disassembly, MITM capture analysis, VSS binary inspection),
+                 not carried over from upstream — see "Acknowledgements" below
 Dockerfile       multi-stage build → chromedp/headless-shell runtime image
-.github/         CI: gofmt/vet/test + multi-arch build & push to ghcr.io (upstream config; update
-                 the image name if you push this fork to your own registry)
+.github/         CI: gofmt/vet/test + multi-arch build & push to ghcr.io (image name is set
+                 automatically from ${{ github.repository }}, so a fork publishes to its own
+                 registry path with no changes needed)
 ```
 
 ## Acknowledgements
@@ -431,6 +450,11 @@ Dockerfile       multi-stage build → chromedp/headless-shell runtime image
 The upstream project,
 [mrfyda/trmnl-joan-bridge](https://github.com/mrfyda/trmnl-joan-bridge),
 reverse-engineered the Visionect device protocol purely for
-interoperability, to keep a perfectly good display out of a landfill. This
-fork adapts it to a different content source. All of the hard
-protocol-level work belongs to the upstream project.
+interoperability, to keep a perfectly good display out of a landfill, and
+this fork's original PV3 implementation builds on that work. This fork
+adapts it to a different content source. Most of the protocol reference
+material in `docs/` is this project's own subsequent research, though — the
+DWARF-based binary disassembly, MITM capture analysis, and VSS server
+binary inspection recorded there go beyond what upstream's own
+documentation covers, and it's presented as this project's original work,
+not carried over from upstream.

@@ -181,10 +181,7 @@ If you customize this dashboard in ways that change its rendered layout —
 adding or removing an area's card block, changing how many Controls rows
 there are, changing text/card sizes, reordering views — the touch-zone
 rectangles recorded in `zones.json` will no longer line up with what's
-actually on screen and must be re-measured.
-
-To re-measure zones after a layout change, use `bridge/tools/measure_zones.ps1`
-(a sibling tool in this repository, under `bridge/tools/`), and use
-`bridge/zones.example.json` as the structural template for what a valid
-`zones.json` looks like — the fields it expects, and how the `"path"`
-values there need to match the view `path`s in this dashboard file.
+actually on screen and must be re-measured. See `bridge/README.md`'s
+"Re-measuring zones after a layout change" (under "Troubleshooting and
+touch calibration") for how — this file just calls it out as a step you
+need after changing this dashboard, rather than duplicating it here.

@@ -1,7 +1,7 @@
 # Packet types (the "type" field in the outer header)
 
 We got this by disassembling each gateway handler's `Type()` method in the
-public `visionect/visionect-server-v3:8.5.5-arm` Docker image. Each method
+public `visionect/visionect-server-v3:7.6.5` Docker image. Each method
 returns the type constant in one instruction.
 
 | Type | Handler                  | Source            | What it carries                                    |
@@ -18,14 +18,21 @@ returns the type constant in one instruction.
 
 ## Direction
 
-The handler's `Type()` value is the type ID it receives in incoming messages.
-By convention, a message from the bridge to the panel uses the same type ID.
-For example:
+This type-ID table is VSS's own convention for dispatching **incoming**
+device messages: the handler's `Type()` value is the type ID a message from
+the panel is tagged with, and VSS routes it to the matching handler. For
+example, the panel announces itself with a `type=3` message, which VSS
+routes to `PV3StatusHandler`.
 
-- The panel announces itself with a `type=3` message. We receive this as a
-  Status message.
-- We send an image to the panel with a `type=10` message. This message goes
-  to the panel's file handler.
+This table does **not** describe anything the bridge itself writes on
+outgoing (bridge → panel) frames. The bridge's outer header has no type
+field at all — see [wire-framing.md](wire-framing.md)'s Server → Device
+header table and `pv3/encode.go`'s header construction, which only ever
+writes Version, Security, Compression, Length, and Checksum. When the
+bridge pushes an image, the panel identifies it as image data by its body
+content (the `ImageHeader`/`RectangleHeader` structure described in
+[pv3-frame-format.md](pv3-frame-format.md)), not by a type=10 field on the
+outer header.
 
 ## Source files
 
@@ -45,4 +52,5 @@ file system.
 ## What we don't know yet
 
 - We do not know the body schemas for types 6, 7, 8, 10, 11, and 12. Type
-  10's stateful sequence is documented in `proto-package.md`.
+  10's stateful sequence is documented in
+  [Protocol_Bypass_Research.md](../../Protocol_Bypass_Research.md), section 3.

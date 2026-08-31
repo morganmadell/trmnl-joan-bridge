@@ -32,7 +32,7 @@ type zone struct {
 // that are tappable while it's showing.
 type page struct {
 	Name  string `json:"name"`
-	Path  string `json:"path"` // e.g. "/lovelace-joan/0"
+	Path  string `json:"path"` // e.g. "/lovelace-joan/sensors"
 	Zones []zone `json:"zones"`
 }
 

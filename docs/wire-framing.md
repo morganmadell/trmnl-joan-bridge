@@ -24,7 +24,7 @@ and checking it against the captures.
 ```
 offset  size  field             notes
 ------  ----  ----------------  ----------------------------------------
-+0x00    4    type   (uint32 LE)  packet kind — see reference/packet-types.md
++0x00    4    type   (uint32 LE)  packet kind — see packet-types.md
 +0x04    4    version (uint32 LE) sub-type / protocol revision
 +0x08    4    flags  (uint32 LE)  reserved (always 0 in observed packets)
 +0x0c    4    length (uint32 LE)  number of payload bytes that follow
@@ -105,21 +105,28 @@ level means "put bytes onto this channel".
 
 ## Reply behavior table (observed)
 
-All the replies we tested had a 20-byte header, with `flags=0`, `len=0`, and
-`dev_id` echoed back.
+**Note:** these results were originally gathered and described under the
+old, since-corrected header model (the "Why we got this wrong for sessions
+2-5" section above) — the table below relabels the same test rows with the
+corrected outgoing header field names, `(Version, Security)`, in place of
+the old, disproven `(type, version)`/`flags`/`dev_id` shape.
 
-| Reply `(type, version)` | Disconnect after | Reading |
+All the replies we tested had a 20-byte header, with `Compression=0`,
+`len=0`, and no CRC set unless noted.
+
+| Reply `(Version, Security)` | Disconnect after | Reading |
 |---|---|---|
 | (no reply) | 16s | The panel's idle "waiting for command" timeout |
 | (3, 0) | **~12s** | Parsed as a valid status no-op, polite wait, normal close |
 | (3, 1) | ~4.5s | Parsed, decode error, fast bail |
-| (3, 2) | ~12s | Same as (3, 0) — version field tolerated |
-| (4, 0) | ~4s | Unknown type, fast bail |
+| (3, 2) | ~12s | Same as (3, 0) — Security field tolerated |
+| (4, 0) | ~4s | Unrecognized Version, fast bail |
 | (8, 0) | ~4s | Empty Param body, decode error, fast bail |
 | (10, 0) | ~4s | Empty File body, decode error, fast bail |
 | (10, 0) + CRC32 trailer | ~4s | Same as above — CRC presence didn't help an empty body |
 
 **Conclusion:** header-only replies cannot produce useful behavior from the
 panel, on any type except 3-as-no-op. To trigger anything else, you need
-real body content that matches the type — see `reference/proto-package.md`
+real body content that matches the type — see
+[Protocol_Bypass_Research.md](../../Protocol_Bypass_Research.md), section 3,
 for the body type names.

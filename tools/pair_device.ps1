@@ -8,8 +8,14 @@
     connect to the Joan-6's serial console - an FTDI UART exposed over the
     Micro-USB port, 115200 8N1 - read back its current server_tcp_get
     setting, then send server_tcp_set / flash_save / reboot to point it at a
-    self-hosted trmnl-joan-bridge server instead of Visionect's cloud (the
-    observed factory default is we3.gw.getjoan.com 11113).
+    self-hosted trmnl-joan-bridge server instead of Visionect's cloud. One
+    documented general reference value for the factory default is
+    we3.gw.getjoan.com 11113, but this project's own device actually logged
+    a different value (wu.gw.getjoan.com) when queried, and the two were
+    never reconciled - see PAIRING.md section 7 for the full explanation.
+    Don't be surprised if your own device reports yet another value; it
+    doesn't matter for pairing, since server_tcp_get here is only a sanity
+    check, not something that needs to match a particular expected string.
 
     IMPORTANT (observed hardware quirk): the device's serial console can be
     asleep when you first connect, and the very first thing sent after

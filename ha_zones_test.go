@@ -10,7 +10,7 @@ const testZonesJSON = `{
   "pages": [
     {
       "name": "sensors",
-      "path": "/lovelace-joan/0",
+      "path": "/lovelace-joan/sensors",
       "zones": [
         {"x1": 0, "y1": 0, "x2": 342, "y2": 80, "action": {"page": "sensors"}},
         {"x1": 342, "y1": 0, "x2": 683, "y2": 80, "action": {"page": "controls"}},
@@ -19,7 +19,7 @@ const testZonesJSON = `{
     },
     {
       "name": "controls",
-      "path": "/lovelace-joan/1",
+      "path": "/lovelace-joan/controls",
       "zones": [
         {"x1": 0, "y1": 0, "x2": 342, "y2": 80, "action": {"page": "sensors"}},
         {"x1": 0, "y1": 80, "x2": 512, "y2": 419, "action": {"domain": "media_player", "service": "toggle", "entity": "media_player.boardroom_tv"}}
@@ -27,7 +27,7 @@ const testZonesJSON = `{
     },
     {
       "name": "graphs",
-      "path": "/lovelace-joan/2",
+      "path": "/lovelace-joan/graphs",
       "zones": []
     }
   ]
@@ -50,8 +50,8 @@ func TestLoadZoneConfig(t *testing.T) {
 	if len(zc.Pages) != 3 {
 		t.Fatalf("pages = %d, want 3", len(zc.Pages))
 	}
-	if zc.Pages[0].Name != "sensors" || zc.Pages[0].Path != "/lovelace-joan/0" {
-		t.Errorf("page 0 = %+v, want name=sensors path=/lovelace-joan/0", zc.Pages[0])
+	if zc.Pages[0].Name != "sensors" || zc.Pages[0].Path != "/lovelace-joan/sensors" {
+		t.Errorf("page 0 = %+v, want name=sensors path=/lovelace-joan/sensors", zc.Pages[0])
 	}
 }
 

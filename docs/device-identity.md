@@ -73,6 +73,13 @@ protocol must be small. They must fit next to the space reserved for firmware.
 
 ## Important error code
 
+`PV2` here is a literal string taken from the panel's own firmware log
+output (see the source note at the top of this file), not a reference to a
+second wire protocol version — it has nothing to do with the wire-format
+"was the header's first field 2 or 3" confusion that
+[wire-framing.md](wire-framing.md) later corrected. Every wire protocol
+reference in this project, including elsewhere in this same file, is PV3.
+
 ```
 PV2 error: 0x00210000   = the panel's rejection of our 3-message sequence
                           (session 09; cause still being investigated)
@@ -85,5 +92,7 @@ When the panel boots fresh, it sometimes sends an 88-byte message to the
 bridge. It sends this before the regular 456-byte Status hello. The 88-byte
 payload contains the FW CRC inline: bytes 8 to 11 are `17 9c 0b 5e` in
 little-endian order, which equals `0x5e0b9c17`. This value matches
-`PV2_FW_CRC` from the logs. So this message is an announcement of the panel's
-identity and capabilities. We previously treated it as a mystery.
+`PV2_FW_CRC` from the logs (again, the firmware's own internal log label —
+see the note above; not the PV3 wire protocol). So this message is an
+announcement of the panel's identity and capabilities. We previously
+treated it as a mystery.
