@@ -15,8 +15,8 @@ things about it: its LAN IP address, and the port it's listening on
 
 | | Status |
 |---|---|
-| The manual command sequence (`server_tcp_get` → `server_tcp_set` → `flash_save` → `reboot`, 115200 8N1, direct USB) | **Proven on real hardware**, 2026-08-28 — this is literally how this project's own device was paired. |
-| `pair_device.ps1` itself | **Not yet run against real hardware.** It's new code written to formalize the steps above — the terminator character, timing values, and idle-gap thresholds inside it are reasoned defaults, not confirmed against this console's actual behavior. Treat its first run on your device as the real test, and see section 6 for the manual path if it doesn't behave as expected. |
+| The manual command sequence (`server_tcp_get` → `server_tcp_set` → `flash_save` → `reboot`, 115200 8N1, direct USB) | **Proven on real hardware**, 2026-08-28 and again 2026-08-31 — this is literally how this project's own device was paired, twice. |
+| `pair_device.ps1` itself | **Proven on real hardware, 2026-08-31.** Run end to end against a real Joan-6 that had been deliberately reset to an unreachable placeholder address first: the script correctly read the reset state back, applied the new address, saved, and rebooted, with no adjustments needed to the terminator character or timing values. The device reconnected to the bridge and pushed a real frame that got ACKed. |
 | Pairing on Mac/Linux | **Unverified** — never tried. A generic serial tool at the same settings (115200 8N1) should work, but this is a guess, not a tested fact. |
 | This procedure on a Joan-6 with different firmware | **Unverified** — this project only tested against the one firmware version its unit shipped with. Command names and behavior could differ on other firmware. |
 
@@ -149,6 +149,14 @@ You should see these three lines, in order:
 That last line is the real confirmation — it means the device actually
 rendered and displayed the bridge's content, not just that it connected at
 the network level.
+
+**Expect this to take a couple of tries.** In both real pairings this
+project has done, the device's first one or two connection attempts right
+after a reboot failed on their own (one wire-decode error, one that
+connected then dropped after a few seconds) before a third attempt
+succeeded cleanly. This is normal first-connection-after-reboot noise, not
+a sign anything is wrong — give it 30-60 seconds and a few attempts before
+concluding pairing failed.
 
 If the device never appears in the logs at all:
 

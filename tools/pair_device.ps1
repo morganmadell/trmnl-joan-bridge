@@ -19,8 +19,12 @@
     console, waits briefly, then discards whatever garbled response comes
     back without trying to parse it, before sending any real command.
 
-    Nothing like this script has ever been run before against real hardware,
-    so it is written defensively rather than cleverly:
+    Verified end to end against a real Joan-6 on 2026-08-31: the device was
+    deliberately reset to an unreachable placeholder address first, then
+    this script correctly read that state back, repointed it, saved, and
+    rebooted it, with no changes needed to the terminator or timing values
+    below. It's still written defensively rather than cleverly, since it
+    was new and unverified when first written:
       - It does NOT assume this console's line-ending/echo/prompt behavior.
         Responses are read with an idle-gap poll (accumulate text until a
         short quiet period, or an overall timeout, is hit) instead of a
