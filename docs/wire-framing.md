@@ -40,6 +40,11 @@ offset  size  field             notes
                                   (constant across packets in same session)
 ```
 
+This table describes the messages the bridge can classify (Status, Touch,
+etc. — see [packet-types.md](packet-types.md)). Whether the 88-byte
+introduction message ([device-identity.md](device-identity.md)) also uses
+this header is unconfirmed — see that file's "Open question" note.
+
 ### Server → Device (outgoing) — per `prependHeader` disassembly
 
 ```
