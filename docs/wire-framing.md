@@ -3,12 +3,16 @@
 ## Transport
 
 - **TCP, plaintext.** The firmware we have, version 4.12.2775, does not use
-  TLS. The panel's first message on a fresh connection is always a
+  TLS. The panel's first message on a fresh connection is usually a
   `type=3` Status hello (see [packet-types.md](packet-types.md)), so the
-  first byte of a new connection is reliably `0x03` — a good way to detect
+  first byte of a new connection is usually `0x03` — a good way to detect
   "not TLS" at connect time. It is never `0x16`, the TLS ClientHello byte.
-  This does not hold for every message on an already-open connection: a
-  Touch message, for example, is `type=6`, so its first byte is `0x06`.
+  On some fresh boots, the panel sends an 88-byte introduction message
+  before the Status hello instead — see
+  [device-identity.md](device-identity.md)'s "88-byte introduction
+  message" section. This does not hold for every message on an
+  already-open connection either: a Touch message, for example, is
+  `type=6`, so its first byte is `0x06`.
 - The panel dials whatever IP:port is configured in the desktop **Visionect
   Configurator**, under *Advanced connectivity → Server IP / Server port*.
   The Configurator's default port is `11113`. We set it to `11112`, to
@@ -97,7 +101,7 @@ Some message bodies end with a 4-byte CRC32 trailer.
 | Constant | Meaning |
 |---|---|
 | `0x56a14c5d` | This panel's `dev_id_lo` (a 4-byte session ID, stable across reboots in our captures). |
-| `0x5e0b9c17` | Appears in both the 456-byte hello body and the 88-byte mystery message. Probably a Visionect firmware build hash or magic number. |
+| `0x5e0b9c17` | Appears in both the 456-byte hello body and the 88-byte introduction message (see [device-identity.md](device-identity.md)). Probably a Visionect firmware build hash or magic number. |
 | `0xffffffff` | "End-of-list" sentinel inside structured bodies. |
 
 ## Sender-side reference (server → device)
