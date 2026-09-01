@@ -52,6 +52,14 @@ paints. This is the whole screen (`0,0,1024,758`) for a full frame, and a
 sub-rectangle for a partial update. See [partial-updates.md](partial-updates.md).
 
 **DataHeader** — 36 B: `Priority`, `UUID` (16 B), `Type`, `ID`, `Length`.
+If the four unlabeled scalar fields (`Priority`, `Type`, `ID`, `Length`)
+are u32 each, matching this doc's convention for unlabeled scalars
+elsewhere, the fields sum to only 32 B, 4 B short of the stated 36 B — one
+of them is likely wider than u32 (`ID` at 8 B would reconcile it exactly),
+but the DWARF dump this table came from didn't record it. `DataHeader`
+isn't implemented anywhere in `bridge/pv3/*.go`, so this can't be checked
+against the bridge's own code; flagging it here as unconfirmed rather than
+guessing.
 
 ## Compression
 

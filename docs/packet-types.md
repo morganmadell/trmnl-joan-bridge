@@ -44,10 +44,17 @@ file system.
 
 - The panel reliably sends `type=3` Status messages. We have about 100
   captures of these messages.
-- A reply with `type=3, version=0, len=0` has only a header. The panel
-  accepts it as a no-op.
-- The panel rejects any reply with `len=0` for types 4, 8, or 10. It closes
-  the connection fast, in about 4 to 5 seconds.
+- These are outgoing (bridge → panel) replies, so they use the outgoing
+  header's own field names, `Version`/`Security` — not the incoming `type`
+  field this file's own table above describes. See
+  [wire-framing.md](wire-framing.md)'s "Reply behavior table" for the full
+  results. A reply with `Version=3, Security=0, len=0` has only a header.
+  The panel accepts it as a no-op.
+- The panel rejects any reply with `len=0` for `Version` 4, 8, or 10. It
+  closes the connection fast, in about 4 to 5 seconds. (These `Version`
+  values are not the same thing as this file's incoming type IDs — `4` is
+  not even a real type ID above; it is one of the `Version` values tested
+  in wire-framing.md's experiment.)
 
 ## What we don't know yet
 

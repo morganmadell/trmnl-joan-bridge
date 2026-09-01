@@ -7,15 +7,9 @@
 #                         whether a ghcr.io image is published/reachable.
 #   ./deploy.sh --pull    Skip the local build and instead pull
 #                         ghcr.io/morganmadell/trmnl-joan-bridge:latest and
-#                         run that. This code has been on main since
-#                         2026-08-31 and CI (.github/workflows/ci.yml)
-#                         publishes to ghcr.io on every push to main, so a
-#                         build likely exists — but GHCR packages can default
-#                         to private visibility separately from the source
-#                         repo's own visibility, so this can fail with an
-#                         auth error until that's confirmed/fixed at
-#                         github.com/users/morganmadell/packages/container/trmnl-joan-bridge
-#                         -> Package settings -> Change visibility.
+#                         run that. See README.md's "--pull" note for why
+#                         this can fail with an auth error (GHCR package
+#                         visibility) and how to fix it.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"

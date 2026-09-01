@@ -3,8 +3,12 @@
 ## Transport
 
 - **TCP, plaintext.** The firmware we have, version 4.12.2775, does not use
-  TLS. The first byte of every message from the panel is `0x03`. It is
-  never `0x16`, the TLS ClientHello byte.
+  TLS. The panel's first message on a fresh connection is always a
+  `type=3` Status hello (see [packet-types.md](packet-types.md)), so the
+  first byte of a new connection is reliably `0x03` — a good way to detect
+  "not TLS" at connect time. It is never `0x16`, the TLS ClientHello byte.
+  This does not hold for every message on an already-open connection: a
+  Touch message, for example, is `type=6`, so its first byte is `0x06`.
 - The panel dials whatever IP:port is configured in the desktop **Visionect
   Configurator**, under *Advanced connectivity → Server IP / Server port*.
   The Configurator's default port is `11113`. We set it to `11112`, to

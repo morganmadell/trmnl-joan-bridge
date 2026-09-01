@@ -37,13 +37,13 @@ way to bring this file in:
 2. Click **+ Add Dashboard**, then choose **New dashboard from scratch**.
 3. Give it a name and, importantly, set its **URL path** deliberately. This
    project's bridge requests dashboard pages by URL, e.g.
-   `/lovelace-joan/sensors`. That means the dashboard's `url_path` (the
-   part right after `/lovelace-joan/` disappears and before is the
-   dashboard identifier — concretely, `lovelace-joan` in this example) must
-   match whatever `bridge/zones.json`'s `"path"` fields expect. When
-   creating the dashboard, check the URL Home Assistant assigns it (or set
-   it explicitly if the creation dialog allows it) and make sure it lines
-   up with what `zones.json` is configured to use — e.g. `lovelace-joan`.
+   `/lovelace-joan/sensors`. The dashboard's `url_path` is the segment
+   right after the leading slash — concretely, `lovelace-joan` in that
+   example — and it must match whatever `bridge/zones.json`'s `"path"`
+   fields expect. When creating the dashboard, check the URL Home
+   Assistant assigns it (or set it explicitly if the creation dialog
+   allows it) and make sure it lines up with what `zones.json` is
+   configured to use — e.g. `lovelace-joan`.
 4. Open the new (currently empty) dashboard.
 5. Click the **three-dot menu** in the top right corner and choose
    **Edit Dashboard**.
