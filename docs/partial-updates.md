@@ -17,9 +17,12 @@ which calls `isFullScreenUnlocked`, `getRectsAndClear`, and
 `forceFullScreen`. The only difference is the rectangle list. A full update
 has one rectangle that covers the whole screen.
 
-The 84-byte pre-header has two parts: a 60-byte preamble and a 24-byte
-`RectangleHeader` (see [pv3-frame-format.md](pv3-frame-format.md)). For a
-full frame, the rectangle covers the whole screen:
+The pre-header's 84-byte header portion has two parts: a 60-byte preamble
+and a 24-byte `RectangleHeader` (see
+[pv3-frame-format.md](pv3-frame-format.md), which calls this the
+"pre-header header" to distinguish it from the full pre-header — the
+84-byte header plus the tail pixels that follow it). For a full frame, the
+rectangle covers the whole screen:
 
 ```
 ImageType=1(Gray) ScreenID=0 X=0 Y=0 Width=1024 Height=758
