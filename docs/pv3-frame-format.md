@@ -69,11 +69,14 @@ CompressPacket(packet) → Marshall(packet) → ToBlocks: chunk into PayloadLeng
 ## Block / pixel coverage
 
 The panel is 1024×758 pixels, at 4-bit grayscale. This equals 388096 bytes,
-at 2 pixels per byte. The 80 `dataBlock`s cover `packed[0:383376]`, which is
-79×4800 + 4176 bytes, or the top 749 rows. The pre-header carries the
-remaining 4720 bytes: `packed[383376:388096]`. The panel places these bytes
-at the end of the framebuffer. This is the bottom 9 rows, after the fixed
-180° rotation.
+at 2 pixels per byte, or 512 bytes per row. The 80 `dataBlock`s cover
+`packed[0:383376]`, which is 79×4800 + 4176 bytes. `383376 / 512 = 748.78125`,
+so the blocks do not end on a row boundary: they fully cover the top 748
+rows, plus the first 400 bytes of row 749. The pre-header carries the
+remaining 4720 bytes: `packed[383376:388096]` — the last 112 bytes of row
+749, plus the last 9 full rows after it (`112 + 9×512 = 4720`). The panel
+places these bytes at the end of the framebuffer, after the fixed 180°
+rotation.
 
 ## The pre-header
 
@@ -98,5 +101,6 @@ combines the fixed 84-byte header (60-byte `preamble` plus a 24-byte
 `packed[383376:388096]`, sent raw, and sets
 `Options = len − 4`. The bridge LZ4-compresses the 80 blocks, but sends the
 tail raw. The panel accepts a raw tail; VSS itself sends raw data for
-content it cannot compress well. This is why the bottom 9 rows show live
-content, not a frozen image.
+content it cannot compress well. This is why the bottom of the panel — the
+last 9 rows plus a sliver of the row above them — shows live content, not a
+frozen image.

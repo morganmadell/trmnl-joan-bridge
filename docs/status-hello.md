@@ -34,7 +34,16 @@ Information" readout (see [device-identity.md](device-identity.md)).
 | 0x23 / 35 | charge current (mA) | 954 charging → 0 once unplugged |
 | 0x26, 0x27 / 38, 39 | panel width, height | 1024, 758 — constant |
 | 0x32–0x35 / 50–53 | GTIN | "3830065460078" as 4-char ASCII chunks |
-| 0x3c, 0x3d / 60, 61 | filesystem free, total | 130988 bytes |
+| 0x3c, 0x3d / 60, 61 | filesystem total, free (see note below) | 130988 bytes |
+
+**Note on keys 60/61's free/total order:** this live capture alone can't
+distinguish them — both values were 130988 at capture time (an empty
+filesystem, free equals total). `Protocol_Bypass_Research.md`'s
+DWARF-derived field-name extraction from the VSS binary gives 60=Total,
+61=Free, and every other key number that table shares with this capture
+(34/35 battery, 38/39 panel dimensions) lines up exactly with what this
+capture independently found — so that order is the more likely correct
+one, adopted here on that basis, not confirmed by this capture on its own.
 
 The correlation between voltage and current pins down keys 34 and 35.
 Voltage climbs while current is about 950 mA, during charging. Voltage

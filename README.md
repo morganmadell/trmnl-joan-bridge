@@ -250,7 +250,7 @@ docker run -d --name trmnl-joan-bridge \
 
 | Variable           | Required | Default   | Description                                                        |
 | ------------------ | -------- | --------- | ------------------------------------------------------------------ |
-| `TRMNL_SERVER`     | yes      | —         | TRMNL base URL, e.g. `http://192.168.1.10:2300`                 |
+| `TRMNL_SERVER`     | yes      | —         | TRMNL base URL, e.g. `http://192.168.1.210:2300`                |
 | `DEVICE_ID`        | yes      | —         | Panel MAC address, **uppercase**, e.g. `AA:BB:CC:DD:EE:FF`          |
 | `ACCESS_TOKEN`     | yes      | —         | TRMNL device access token                                       |
 
@@ -394,7 +394,7 @@ as the structural template for the resulting `zones.json`.
 ## Building from source
 
 ```bash
-# Local binary (requires Go 1.22+) — compiles and runs `go vet`/`go test`,
+# Local binary (requires Go 1.26+, matching go.mod) — compiles and runs `go vet`/`go test`,
 # but does NOT get you a browser for HA mode; use Docker for that (below).
 go build -o bin/trmnl-joan-bridge .
 go vet ./...
