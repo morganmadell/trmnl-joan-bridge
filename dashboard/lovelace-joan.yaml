@@ -136,7 +136,7 @@ views:
               columns: full
           - type: markdown
             text_only: true
-            content: "<small>Updated {{ now().strftime('%-I:%M %p') }}</small>"
+            content: "## Updated {{ now().strftime('%Y-%m-%d %H:%M') }}"
             grid_options:
               columns: full
               rows: 1
@@ -188,7 +188,7 @@ views:
               columns: full
           - type: markdown
             text_only: true
-            content: "<small>Updated {{ now().strftime('%-I:%M %p') }}</small>"
+            content: "## Updated {{ now().strftime('%Y-%m-%d %H:%M') }}"
             grid_options:
               columns: full
               rows: 1
@@ -245,7 +245,7 @@ views:
               rows: 4
           - type: markdown
             text_only: true
-            content: "<small>Updated {{ now().strftime('%-I:%M %p') }}</small>"
+            content: "## Updated {{ now().strftime('%Y-%m-%d %H:%M') }}"
             grid_options:
               columns: full
               rows: 1
