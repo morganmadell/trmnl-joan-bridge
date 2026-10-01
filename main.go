@@ -50,6 +50,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"trmnl-joan-bridge/pv3"
@@ -113,6 +114,7 @@ func main() {
 		break
 	}
 	go cs.loop(fc)
+	go reapZombies()
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
@@ -491,4 +493,30 @@ func envInt(key string, def int) int {
 		}
 	}
 	return def
+}
+
+// reapZombies periodically cleans up dead child processes that chromedp's
+// allocator doesn't always reap on its own. Observed in practice: a
+// "chrome failed to start" render failure can leave the already-dead
+// headless-shell process as a zombie instead of waiting on it, and this
+// doesn't show up during normal operation — only when renders start
+// failing repeatedly (a stuck/unreachable HA instance, for example). Left
+// unchecked, each failed render leaks one more zombie; over enough
+// failures (days of unattended retries at REFRESH_INTERVAL) this
+// exhausts the host's process table entirely, which breaks everything
+// (docker exec, new container starts, the works), not just rendering —
+// this is what actually happened 2026-09-24 through 2026-10-01, ending in
+// ~19,000 zombie processes. wait4 with WNOHANG only reaps processes that
+// have already exited, so this can't affect a process still running.
+func reapZombies() {
+	for {
+		time.Sleep(30 * time.Second)
+		for {
+			var status syscall.WaitStatus
+			pid, err := syscall.Wait4(-1, &status, syscall.WNOHANG, nil)
+			if pid <= 0 || err != nil {
+				break
+			}
+		}
+	}
 }
