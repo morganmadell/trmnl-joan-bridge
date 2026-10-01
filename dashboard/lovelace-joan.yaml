@@ -1,7 +1,9 @@
 # lovelace-joan.yaml
 #
 # Exported snapshot of a REAL, WORKING Home Assistant Lovelace dashboard.
-# Fetched directly from a live, running Home Assistant instance on 2026-08-31.
+# Fetched directly from a live, running Home Assistant instance on 2026-08-31;
+# the "Updated HH:MM" line on each view was added 2026-10-01 (see TODO.md),
+# applied via the live dashboard and re-exported here to match.
 #
 # This is the actual 3-page dashboard (Sensors / Controls / Graphs) used by
 # this project's Joan-6 e-ink panel bridge -- the bridge renders each page of
@@ -132,6 +134,12 @@ views:
                 content: "# <small>Seen</small><br>{{ states('sensor.bermuda_global_total_device_count') }}"
             grid_options:
               columns: full
+          - type: markdown
+            text_only: true
+            content: "<small>Updated {{ now().strftime('%-I:%M %p') }}</small>"
+            grid_options:
+              columns: full
+              rows: 1
   - title: Controls
     path: controls
     type: sections
@@ -178,6 +186,12 @@ views:
                 content: "## Samsung 8 Series\n# {{ states('media_player.tv_samsung_8_series_82') }}"
             grid_options:
               columns: full
+          - type: markdown
+            text_only: true
+            content: "<small>Updated {{ now().strftime('%-I:%M %p') }}</small>"
+            grid_options:
+              columns: full
+              rows: 1
   - title: Graphs
     path: graphs
     type: sections
@@ -229,3 +243,9 @@ views:
             grid_options:
               columns: full
               rows: 4
+          - type: markdown
+            text_only: true
+            content: "<small>Updated {{ now().strftime('%-I:%M %p') }}</small>"
+            grid_options:
+              columns: full
+              rows: 1
