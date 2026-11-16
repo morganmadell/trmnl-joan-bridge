@@ -26,3 +26,6 @@ exploration/
 .idea/
 .vscode/
 *.swp
+
+# Doxygen output (see Doxyfile)
+docs/api/

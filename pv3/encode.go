@@ -29,10 +29,14 @@ const (
 	preHdrRawSz = PanelW*PanelH/2 - blockTotal // 4720
 )
 
-// rect is a panel-space rectangle. Its region payload is w*h/2 packed bytes (the
-// panel is 4-bit grayscale, 2 px/byte).
+// @brief A rectangle in panel space.
+//
+// @details Its region payload is w*h/2 packed bytes (4-bit gray, 2 pixels per byte).
 type rect struct{ x, y, w, h int }
 
+// @brief Size of the rectangle's packed pixel data.
+//
+// @return The size in bytes (w*h/2).
 func (r rect) payload() int { return r.w * r.h / 2 }
 
 // fullScreen is the rectangle a full frame paints — the whole panel.
@@ -48,25 +52,37 @@ var preamble = mustDecodeHex(
 		"b3f1a71a2cec050000000000b0e099a0010000000000000018ec0500" +
 		"00000000")
 
-// EncodeFrame converts an image.Image to a complete Joan 6 PV3 Frame painting the
-// whole screen. EncodeFrame is encodeRegion over the full-screen rectangle, after
-// packing. See docs/pv3-frame-format.md.
+// @brief Encode an image as a full-screen PV3 frame.
+//
+// @details Packs the image with Pack and encodes it with encodeRegion over the full-screen
+// rectangle.
+//
+// @param src Image of the panel size.
+// @return The complete frame bytes.
 func EncodeFrame(src image.Image) []byte {
 	return EncodeFramePacked(Pack(src))
 }
 
-// EncodeFramePacked builds a full PV3 frame from an already-packed framebuffer
-// (PanelW*PanelH/2 bytes, as returned by Pack). The split from EncodeFrame lets a
-// caller pack once and reuse the framebuffer for a subsequent EncodePartial diff.
+// @brief Encode an already packed framebuffer as a full PV3 frame.
+//
+// @details Lets the caller pack once and keep the framebuffer for a later EncodePartial diff.
+//
+// @param packed Packed framebuffer from Pack.
+// @return The complete frame bytes.
 func EncodeFramePacked(packed []byte) []byte {
 	return encodeRegion(packed, fullScreen)
 }
 
-// encodeRegion assembles a complete PV3 frame painting data — the region's w*h/2
-// packed pixels — at panel rectangle r. The last preHdrRawSz bytes of data ride in
-// the pre-header tail; the rest are LZ4-chunked into blocks. A full frame is
-// encodeRegion(packed, fullScreen); a partial is encodeRegion(readRegion(packed,
-// r), r). See docs/pv3-frame-format.md.
+// @brief Build a complete PV3 frame that paints a region.
+//
+// @details encodeRegion assembles a complete PV3 frame painting data — the region's w*h/2 packed
+// pixels — at panel rectangle r. The last preHdrRawSz bytes of data ride in the pre-header tail; the
+// rest are LZ4-chunked into blocks. A full frame is encodeRegion(packed, fullScreen); a partial is
+// encodeRegion(readRegion(packed, r), r). See docs/pv3-frame-format.md.
+//
+// @param data The region's w*h/2 packed pixels.
+// @param r Panel rectangle to paint.
+// @return The complete frame bytes.
 func encodeRegion(data []byte, r rect) []byte {
 	tail := data[len(data)-preHdrRawSz:]
 	blocks, count := buildBlocks(data[:len(data)-preHdrRawSz])
@@ -94,10 +110,16 @@ func encodeRegion(data []byte, r rect) []byte {
 	return append(outer, body...)
 }
 
-// buildPreHeader assembles the pre-header for rectangle r: the 60-byte preamble
-// (with its two payload-size fields rewritten — the device validates them), the
-// 24-byte RectangleHeader, then the raw tail pixels. buildPreHeader(fullScreen, …)
-// reproduces the device's full-frame header exactly.
+// @brief Build the pre-header for a rectangle.
+//
+// @details buildPreHeader assembles the pre-header for rectangle r: the 60-byte preamble (with its
+// two payload-size fields rewritten — the device validates them), the 24-byte RectangleHeader, then
+// the raw tail pixels. buildPreHeader(fullScreen, …) reproduces the device's full-frame header
+// exactly.
+//
+// @param r Rectangle being painted.
+// @param tail Last bytes of the pixel data that ride in the pre-header.
+// @return The pre-header bytes.
 func buildPreHeader(r rect, tail []byte) []byte {
 	p := append([]byte(nil), preamble...)
 	binary.LittleEndian.PutUint32(p[32:], uint32(r.payload()+44))
@@ -110,9 +132,13 @@ func buildPreHeader(r rect, tail []byte) []byte {
 	return pre
 }
 
-// rectHeader is the 24-byte RectangleHeader for region r: ImageType=1 (Gray),
-// Encoding=4 (4-bit), RectangleUpdateOptions=0x0102 (4-bit), PayloadLength=w*h/2.
-// All little-endian.
+// @brief Build the 24-byte RectangleHeader for a region.
+//
+// @details rectHeader is the 24-byte RectangleHeader for region r: ImageType=1 (Gray), Encoding=4
+// (4-bit), RectangleUpdateOptions=0x0102 (4-bit), PayloadLength=w*h/2. All little-endian.
+//
+// @param r Rectangle being painted.
+// @return The header bytes, little-endian.
 func rectHeader(r rect) []byte {
 	var rh [24]byte
 	binary.LittleEndian.PutUint16(rh[0:], 1) // ImageType = Gray
@@ -126,11 +152,15 @@ func rectHeader(r rect) []byte {
 	return rh[:]
 }
 
-// buildBlocks LZ4-chunks data into blockSz-byte blocks (the last block smaller),
-// returning the wire bytes and the block count for ImageHeader.NrPrimitives. Each
-// block is a 24-byte header [BlockID:u32][BlockLast:u32][compSize:u32][rawSize:u32]
-// [pad:8] then the LZ4 data, stored raw when incompressible. A full frame's
-// blockTotal bytes chunk to numBlocks (79×blockSz + lastBlockSz).
+// @brief Split pixel data into LZ4-compressed blocks.
+//
+// @details buildBlocks LZ4-chunks data into blockSz-byte blocks (the last block smaller), returning
+// the wire bytes and the block count for ImageHeader.NrPrimitives. Each block is a 24-byte header
+// [BlockID:u32][BlockLast:u32][compSize:u32][rawSize:u32] [pad:8] then the LZ4 data, stored raw when
+// incompressible. A full frame's blockTotal bytes chunk to numBlocks (79×blockSz + lastBlockSz).
+//
+// @param data Packed pixel data after the tail is removed.
+// @return The wire bytes and the block count (for ImageHeader.NrPrimitives).
 func buildBlocks(data []byte) (out []byte, count int) {
 	count = (len(data) + blockSz - 1) / blockSz
 	var comp lz4.Compressor
@@ -161,17 +191,26 @@ func buildBlocks(data []byte) (out []byte, count int) {
 	return out, count
 }
 
-// Pack converts an image to the device's packed 4-bit framebuffer (PanelW*PanelH/2
-// bytes) exactly as EncodeFrame does internally: fixed 180° rotation, resize, and
-// 2-px-per-byte gray4 packing with the colStartOffset scan shift. Callers that want
-// partial updates keep the packed framebuffer of the last displayed image and pass
-// successive frames to EncodePartial.
+// @brief Convert an image to the device's packed 4-bit framebuffer.
+//
+// @details Rotates the image 180 degrees, dithers it to 16 gray levels, and packs it in the panel
+// scan order. Keep the result of the last displayed image and pass it to EncodePartial with the next
+// one.
+//
+// @param src Image of the panel size.
+// @return PanelW*PanelH/2 bytes.
 func Pack(src image.Image) []byte {
 	return toPackedGray4(rotateImage(src, 180))
 }
 
-// rotateImage applies a clockwise rotation of 0, 90, 180, or 270 degrees.
-// Must match the rotation configured in Joan Configurator to avoid cyclic shift artifacts.
+// @brief Rotate an image clockwise.
+//
+// @details Must match the rotation set in Joan Configurator, or the image shows cyclic-shift
+// artifacts.
+//
+// @param src Source image.
+// @param deg Degrees: 0, 90, 180, or 270. Other values are normalized modulo 360; any other angle returns src unchanged.
+// @return The rotated image.
 func rotateImage(src image.Image, deg int) image.Image {
 	b := src.Bounds()
 	w, h := b.Dx(), b.Dy()
@@ -212,19 +251,20 @@ func rotateImage(src image.Image, deg int) image.Image {
 // We pre-shift source pixels by this amount so the image appears correctly positioned.
 const colStartOffset = 224
 
-// toPackedGray4 resizes src to PanelW×PanelH, converts to 4-bit grayscale
-// with Floyd-Steinberg dithering, and packs 2 pixels per byte (high nibble =
-// left pixel). Returns 388096 bytes. Pixels are packed starting at
-// colStartOffset and wrapping, matching the panel's scan order.
+// @brief Convert an image to dithered 4-bit gray and pack two pixels per byte.
 //
-// Dithering matters here, not just for photos: a browser anti-aliases small
-// text by blending thin strokes into partial-gray edge pixels. Naive
-// per-pixel rounding to one of 16 gray levels throws that blending away —
-// confirmed on real hardware on 2026-08-29, where large bold headers stayed
-// legible but small tile text turned "jittery," with strokes partly
-// vanishing. Floyd-Steinberg diffuses each pixel's rounding error to its
-// unprocessed neighbors, so a thin stroke's average darkness survives even
-// though every individual pixel is still forced to one of the 16 levels.
+// @details toPackedGray4 resizes src to PanelW×PanelH, converts to 4-bit grayscale with
+// Floyd-Steinberg dithering, and packs 2 pixels per byte (high nibble = left pixel). Returns 388096
+// bytes. Pixels are packed starting at colStartOffset and wrapping, matching the panel's scan order.
+// Dithering matters here, not just for photos: a browser anti-aliases small text by blending thin
+// strokes into partial-gray edge pixels. Naive per-pixel rounding to one of 16 gray levels throws
+// that blending away — confirmed on real hardware on 2026-08-29, where large bold headers stayed
+// legible but small tile text turned "jittery," with strokes partly vanishing. Floyd-Steinberg
+// diffuses each pixel's rounding error to its unprocessed neighbors, so a thin stroke's average
+// darkness survives even though every individual pixel is still forced to one of the 16 levels.
+//
+// @param src Image of the panel size, already rotated.
+// @return 388096 bytes.
 func toPackedGray4(src image.Image) []byte {
 	dst := image.NewNRGBA(image.Rect(0, 0, PanelW, PanelH))
 	draw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
@@ -246,11 +286,16 @@ func toPackedGray4(src image.Image) []byte {
 	return packed
 }
 
-// ditherFloydSteinberg converts src to 4-bit grayscale (0-15 per pixel,
-// PanelW*PanelH entries, row-major in natural left-to-right/top-to-bottom
-// order — the same order the error-diffusion neighbors assume). Must run
-// before colStartOffset packing: the diffusion step needs true screen-adjacent
-// neighbors, not the shifted/wrapped byte order the panel's scan hardware uses.
+// @brief Convert an image to 4-bit gray with Floyd-Steinberg error diffusion.
+//
+// @details ditherFloydSteinberg converts src to 4-bit grayscale (0-15 per pixel, PanelW*PanelH
+// entries, row-major in natural left-to-right/top-to-bottom order — the same order the
+// error-diffusion neighbors assume). Must run before colStartOffset packing: the diffusion step
+// needs true screen-adjacent neighbors, not the shifted/wrapped byte order the panel's scan hardware
+// uses.
+//
+// @param src Image to convert.
+// @return One value (0 to 15) per pixel in row-major order.
 func ditherFloydSteinberg(src *image.NRGBA) []uint8 {
 	w, h := PanelW, PanelH
 
@@ -299,6 +344,10 @@ func ditherFloydSteinberg(src *image.NRGBA) []uint8 {
 	return out
 }
 
+// @brief Decode a hex constant.
+//
+// @param s Hex string.
+// @return The bytes. Panics on invalid hex, so a bad embedded constant stops the program at start.
 func mustDecodeHex(s string) []byte {
 	b, err := hex.DecodeString(s)
 	if err != nil {

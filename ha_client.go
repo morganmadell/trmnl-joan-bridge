@@ -13,13 +13,13 @@ import (
 	"trmnl-joan-bridge/pv3"
 )
 
-// haClient renders a Home Assistant Lovelace dashboard with a headless
-// Chromium (see ha_render.go) and feeds the screenshot through the same
-// pv3.Pack/EncodeFramePacked pipeline trmnlClient uses for TRMNL images. It
-// owns the "current page" state and routes taps through the zone config (see
-// ha_zones.go): a tap can switch pages or fire a Home Assistant service call,
-// and either way triggers an immediate re-render so the change is visible
-// well before Joan's next ~3-minute heartbeat.
+// @brief Content source that renders a Home Assistant Lovelace dashboard for the panel.
+//
+// @details Screenshots the current page with headless Chromium (see ha_render.go) and encodes it
+// with pv3.Pack and pv3.EncodeFramePacked, as trmnlClient does for TRMNL images. Owns the
+// current-page state and routes taps through the zone config (see ha_zones.go). A tap that switches
+// page or calls a service triggers an immediate re-render, so the change shows before the next
+// heartbeat.
 type haClient struct {
 	haURL       string
 	haToken     string
@@ -32,11 +32,14 @@ type haClient struct {
 	curPage string
 }
 
-// newHAClient reads HA_URL, HA_TOKEN, ZONES_FILE, CHROMIUM_BIN, and
-// RENDER_WAIT_MS from the environment (see README), starts the local
-// auth-redirect server, and returns a client ready for refresh()/loop().
-// Fatal on missing required config or an unreadable/invalid zone file —
-// there's no reasonable way to run in HA mode without them.
+// @brief Build an haClient from environment variables.
+//
+// @details Reads HA_URL, HA_TOKEN, ZONES_FILE (default zones.json), CHROMIUM_BIN (default chromium),
+// and RENDER_WAIT_MS (default 4000). Calls log.Fatal when HA_URL or HA_TOKEN is empty, or when the
+// zone file cannot be loaded.
+//
+// @param fallback Interval between unprompted re-renders (REFRESH_INTERVAL).
+// @return A client that shows the first page of the zone config.
 func newHAClient(fallback time.Duration) *haClient {
 	haURL := strings.TrimRight(env("HA_URL", ""), "/")
 	haToken := env("HA_TOKEN", "")
@@ -61,6 +64,9 @@ func newHAClient(fallback time.Duration) *haClient {
 	}
 }
 
+// @brief Return the page that is currently shown.
+//
+// @return The page named by curPage. Never nil: falls back to page 0 when curPage names no page.
 func (h *haClient) currentPage() *page {
 	h.mu.Lock()
 	name := h.curPage
@@ -71,7 +77,10 @@ func (h *haClient) currentPage() *page {
 	return &h.zones.Pages[0] // config changed under us or curPage stale; fall back to page 0
 }
 
-// refresh satisfies contentSource: render the current page and store it.
+// @brief Render the current page and store the frame (satisfies contentSource).
+//
+// @param fc Frame store that receives the packed framebuffer and the full frame.
+// @return The render error, or nil.
 func (h *haClient) refresh(fc *frameStore) error {
 	p := h.currentPage()
 	img, err := renderDashboard(h.chromiumBin, h.haURL, h.haToken, p.Path, h.waitMs)
@@ -84,10 +93,13 @@ func (h *haClient) refresh(fc *frameStore) error {
 	return nil
 }
 
-// loop satisfies contentSource: re-render on a fixed cadence. Unlike TRMNL
-// (which tells us a refresh_rate), Home Assistant has no equivalent, so this
-// is just REFRESH_INTERVAL — tune it to balance freshness against e-ink
-// ghosting and battery life (see Instructions.md Step 5).
+// @brief Re-render the current page forever, once per fallback interval (satisfies contentSource).
+//
+// @details Home Assistant gives no refresh rate, so the interval is REFRESH_INTERVAL. A longer
+// interval gives less e-ink ghosting and less battery use. Render errors are logged and the loop
+// continues. Never returns.
+//
+// @param fc Frame store to update.
 func (h *haClient) loop(fc *frameStore) {
 	for {
 		time.Sleep(h.fallback)
@@ -97,12 +109,17 @@ func (h *haClient) loop(fc *frameStore) {
 	}
 }
 
-// onTouch satisfies contentSource. Joan reports taps in raw panel
-// coordinates, rotated 180° from what's displayed (see
-// Protocol_Bypass_Research.md §6); this flips them into display space before
-// hit-testing the current page's zones. The flip uses the panel's nominal
-// dimensions — real taps near the edges may need a small calibration offset
-// once you can see actual behavior on your device; adjust here if so.
+// @brief Handle a tap (satisfies contentSource).
+//
+// @details Joan reports taps in raw panel coordinates, rotated 180 degrees from the display (see
+// Protocol_Bypass_Research.md section 6). This function flips them with the nominal panel size,
+// finds the zone on the current page, and either switches page or calls the zone's Home Assistant
+// service. After an action it re-renders. A tap in no zone, or in a zone with no action, changes
+// nothing.
+//
+// @param x Raw panel X coordinate from Joan.
+// @param y Raw panel Y coordinate from Joan.
+// @param fc Frame store to update after the tap.
 func (h *haClient) onTouch(x, y int, fc *frameStore) {
 	dispX, dispY := pv3.PanelW-x, pv3.PanelH-y
 
@@ -136,9 +153,15 @@ func (h *haClient) onTouch(x, y int, fc *frameStore) {
 	}
 }
 
-// callService invokes a Home Assistant service via its REST API — the same
-// long-lived token used for dashboard auth also authorizes this call. See
-// https://developers.home-assistant.io/docs/api/rest/ for the endpoint shape.
+// @brief Call a Home Assistant service through the REST API.
+//
+// @details POSTs {"entity_id": ...} to /api/services/{domain}/{service} with the long-lived token as
+// a Bearer token. See https://developers.home-assistant.io/docs/api/rest/.
+//
+// @param domain Service domain, for example "media_player".
+// @param service Service name, for example "toggle".
+// @param entity The entity_id the service acts on.
+// @return An error when the request fails or Home Assistant returns status 300 or higher.
 func (h *haClient) callService(domain, service, entity string) error {
 	payload, err := json.Marshal(map[string]string{"entity_id": entity})
 	if err != nil {

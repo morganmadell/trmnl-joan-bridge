@@ -14,26 +14,21 @@ import (
 	"trmnl-joan-bridge/pv3"
 )
 
-// renderDashboard screenshots a Home Assistant Lovelace dashboard with a real
-// headless Chromium session (via the DevTools Protocol, through chromedp) and
-// returns the decoded image, sized to the Joan 6 panel's native resolution.
+// @brief Screenshot a Home Assistant dashboard page with headless Chromium.
 //
-// Auth: HA's frontend reads a "hassTokens" localStorage entry (the same
-// community-documented mechanism the official companion apps' web view uses)
-// to hydrate an authenticated session without a login form. localStorage is
-// scoped per-origin, so this only works if it's written on a page already
-// loaded from haURL itself — an earlier version of this file wrote it on a
-// local loopback redirect page instead, which meant it never reached HA's
-// origin at all (confirmed by an actual login-page screenshot when first
-// tested). This version navigates to haURL first, injects the token there via
-// chromedp.Evaluate (same origin, so it sticks), then navigates to the
-// dashboard path.
+// @details Auth: the Home Assistant frontend reads a "hassTokens" localStorage entry to start a
+// session without a login form. localStorage is per origin, so the token is set on a page loaded
+// from haURL, and then the dashboard path is loaded. The token value must be a JS string literal (a
+// JSON-encoded JSON string). A raw object is coerced to "[object Object]". Both mistakes were real
+// bugs on first test (see Claude_Work.md). Set DEBUG_SAVE_SCREENSHOTS to a directory to keep the
+// last render.
 //
-// chromiumBin is the executable name/path (varies by base image — see
-// Dockerfile). waitMs bounds both the settle time after navigating to the
-// dashboard (Home Assistant's frontend is a full SPA that needs a real
-// websocket connection to populate) and the overall context timeout — tune it
-// empirically against your real dashboard.
+// @param chromiumBin Chromium executable name or path (differs by base image, see Dockerfile).
+// @param haURL Home Assistant base URL without a trailing slash.
+// @param haToken Long-lived access token.
+// @param dashboardPath Dashboard path appended to haURL.
+// @param waitMs Settle time in milliseconds after navigation. The overall timeout is this plus 15 seconds.
+// @return The screenshot as an image of the panel size, or an error.
 func renderDashboard(chromiumBin, haURL, haToken, dashboardPath string, waitMs int) (image.Image, error) {
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.ExecPath(chromiumBin),
@@ -51,31 +46,10 @@ func renderDashboard(chromiumBin, haURL, haToken, dashboardPath string, waitMs i
 	ctx, cancelTimeout := context.WithTimeout(ctx, time.Duration(waitMs)*time.Millisecond+15*time.Second)
 	defer cancelTimeout()
 
-	// HA frontend's expected shape for a pre-authenticated session. expires is
-	// set far in the future (there's no refresh_token behind a long-lived
-	// access token, so we never want the frontend to try to silently refresh).
-	tokens, err := json.Marshal(map[string]any{
-		"access_token":  haToken,
-		"token_type":    "Bearer",
-		"expires_in":    315360000, // 10 years, seconds — shape-only; see "expires" below
-		"hassUrl":       haURL,
-		"clientId":      haURL + "/",
-		"expires":       time.Now().AddDate(50, 0, 0).UnixMilli(),
-		"refresh_token": "",
-	})
+	setTokenJS, err := hassTokensJS(haURL, haToken)
 	if err != nil {
-		return nil, fmt.Errorf("encode hassTokens: %w", err)
+		return nil, err
 	}
-	// tokens is JSON bytes describing the object; localStorage.setItem needs a
-	// *string* value (HA's frontend JSON.parses it back), so it must be
-	// embedded as a JS string literal, not spliced in as a bare object literal
-	// (which JS would silently coerce to the useless string "[object Object]").
-	// Marshaling it a second time produces a properly quoted/escaped JS string.
-	tokensAsJSString, err := json.Marshal(string(tokens))
-	if err != nil {
-		return nil, fmt.Errorf("encode hassTokens string literal: %w", err)
-	}
-	setTokenJS := fmt.Sprintf(`localStorage.setItem("hassTokens", %s)`, tokensAsJSString)
 
 	var buf []byte
 	err = chromedp.Run(ctx,
@@ -104,20 +78,60 @@ func renderDashboard(chromiumBin, haURL, haToken, dashboardPath string, waitMs i
 	return img, nil
 }
 
-// kioskModeJS strips Home Assistant's normal app chrome (the left sidebar,
-// the per-view tab strip, and the top toolbar's search/edit/assist icons) and
-// expands the dashboard content to fill the full panel — a small e-ink
-// display has no use for navigation chrome meant for a desktop browser, and
-// leaving it in place wasted about a quarter of the screen's width on the
-// sidebar alone. Home Assistant's layout assigns the content pane a fixed
-// width/offset (not a flexible one), so hiding the sidebar alone doesn't
-// reclaim its space — the content pane and the sections view's own internal
-// wrapper both need to be forced to the full panel width explicitly. Found
-// by inspecting the actual shadow-DOM tree of a live render; the exact
-// element/class names (ha-sidebar, hui-sections-view, etc.) are current
-// frontend internals, not a stable public API, and could shift in a future
-// HA release — if a render comes back with the sidebar back or squeezed
-// content, this is the first place to check.
+// @brief Build the JavaScript that signs the Home Assistant frontend in with a long-lived token.
+//
+// @details The frontend reads the "hassTokens" localStorage entry (same mechanism as the companion
+// apps' web view). The value must be a JS string literal that holds JSON. A bare object literal is
+// coerced to "[object Object]" and the frontend shows the login page.
+//
+// @param haURL Home Assistant base URL.
+// @param haToken Long-lived access token.
+// @return JavaScript source for chromedp.Evaluate, or an error when JSON encoding fails.
+func hassTokensJS(haURL, haToken string) (string, error) {
+	// HA frontend's expected shape for a pre-authenticated session. expires is
+	// set far in the future (there's no refresh_token behind a long-lived
+	// access token, so we never want the frontend to try to silently refresh).
+	tokens, err := json.Marshal(map[string]any{
+		"access_token":  haToken,
+		"token_type":    "Bearer",
+		"expires_in":    315360000, // 10 years, seconds — shape-only; see "expires" below
+		"hassUrl":       haURL,
+		"clientId":      haURL + "/",
+		"expires":       time.Now().AddDate(50, 0, 0).UnixMilli(),
+		"refresh_token": "",
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode hassTokens: %w", err)
+	}
+	// tokens is JSON bytes describing the object; localStorage.setItem needs a
+	// *string* value (HA's frontend JSON.parses it back), so it must be
+	// embedded as a JS string literal, not spliced in as a bare object literal
+	// (which JS would silently coerce to the useless string "[object Object]").
+	// Marshaling it a second time produces a properly quoted/escaped JS string.
+	tokensAsJSString, err := json.Marshal(string(tokens))
+	if err != nil {
+		return "", fmt.Errorf("encode hassTokens string literal: %w", err)
+	}
+	return fmt.Sprintf(`localStorage.setItem("hassTokens", %s)`, tokensAsJSString), nil
+}
+
+// @brief Build the JavaScript that removes Home Assistant's app chrome and fills the panel.
+//
+// @details kioskModeJS strips Home Assistant's normal app chrome (the left sidebar, the per-view tab
+// strip, and the top toolbar's search/edit/assist icons) and expands the dashboard content to fill
+// the full panel — a small e-ink display has no use for navigation chrome meant for a desktop
+// browser, and leaving it in place wasted about a quarter of the screen's width on the sidebar
+// alone. Home Assistant's layout assigns the content pane a fixed width/offset (not a flexible one),
+// so hiding the sidebar alone doesn't reclaim its space — the content pane and the sections view's
+// own internal wrapper both need to be forced to the full panel width explicitly. Found by
+// inspecting the actual shadow-DOM tree of a live render; the exact element/class names (ha-sidebar,
+// hui-sections-view, etc.) are current frontend internals, not a stable public API, and could shift
+// in a future HA release — if a render comes back with the sidebar back or squeezed content, this is
+// the first place to check.
+//
+// @param panelW Panel width in pixels.
+// @param panelH Panel height in pixels.
+// @return JavaScript source for chromedp.Evaluate.
 func kioskModeJS(panelW, panelH int) string {
 	return fmt.Sprintf(`
 (function() {
@@ -189,10 +203,13 @@ func kioskModeJS(panelW, panelH int) string {
 `, panelW, panelH)
 }
 
-// saveDebugScreenshot writes the just-captured render to a fixed, overwritten
-// path so you can look at it — e.g. to tell a stuck login screen apart from a
-// real rendering problem. Set DEBUG_SAVE_SCREENSHOTS to a writable directory
-// to enable this; leave unset in normal operation.
+// @brief Write the last render to DIR/latest-render.png, overwriting the previous one.
+//
+// @details Use it to tell a login screen from a real layout problem. Write errors are logged, not
+// returned.
+//
+// @param dir Existing, writable directory (DEBUG_SAVE_SCREENSHOTS).
+// @param png PNG bytes of the render.
 func saveDebugScreenshot(dir string, png []byte) {
 	dest := dir + "/latest-render.png"
 	if err := os.WriteFile(dest, png, 0o644); err != nil {

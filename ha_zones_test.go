@@ -97,9 +97,9 @@ func TestZoneHit(t *testing.T) {
 		{100, 40, "sensors", false},  // left nav third
 		{500, 40, "controls", false}, // middle nav third
 		{900, 40, "graphs", false},   // right nav third
-		{500, 500, "", true},        // below the nav bar — no zone on this page
-		{341, 0, "sensors", false},  // still inside the first zone (x2=342 is exclusive)
-		{342, 0, "controls", false}, // first pixel of the second zone
+		{500, 500, "", true},         // below the nav bar — no zone on this page
+		{341, 0, "sensors", false},   // still inside the first zone (x2=342 is exclusive)
+		{342, 0, "controls", false},  // first pixel of the second zone
 	}
 	for _, tc := range tests {
 		got := sensors.hit(tc.x, tc.y)
@@ -131,5 +131,30 @@ func TestZoneHitServiceAction(t *testing.T) {
 	}
 	if got.Domain != "media_player" || got.Service != "toggle" || got.Entity != "media_player.boardroom_tv" {
 		t.Errorf("action = %+v, want domain=media_player service=toggle entity=media_player.boardroom_tv", got)
+	}
+}
+
+func TestLoadZoneConfigInvalid(t *testing.T) {
+	tests := map[string]string{
+		"bad json":     `{"pages": [`,
+		"missing name": `{"pages": [{"path": "/x"}]}`,
+		"missing path": `{"pages": [{"name": "x"}]}`,
+	}
+	for name, content := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "zones.json")
+			os.WriteFile(path, []byte(content), 0o644)
+			if _, err := loadZoneConfig(path); err == nil {
+				t.Fatal("want error, got nil")
+			}
+		})
+	}
+}
+
+// Docker creates a directory when a bind-mount source file is missing. That
+// turned zones.json into a directory once and the bridge failed at start.
+func TestLoadZoneConfigPathIsDirectory(t *testing.T) {
+	if _, err := loadZoneConfig(t.TempDir()); err == nil {
+		t.Fatal("want error when the zone config path is a directory, got nil")
 	}
 }

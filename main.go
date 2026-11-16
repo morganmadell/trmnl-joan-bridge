@@ -58,16 +58,22 @@ import (
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
-// contentSource is anything that can keep a frameStore filled with the
-// current image and react to a screen tap. haClient (default) renders a Home
-// Assistant dashboard; trmnlClient (source=trmnl) polls a TRMNL server.
-// main() picks one via -source/SOURCE and hands it to every connection.
+// @brief Source of the current image and handler of screen taps.
+//
+// @details Methods: refresh(fc) renders or fetches one image into fc. loop(fc) refreshes forever on
+// a cadence. onTouch(x, y, fc) reacts to a tap. haClient (default) and trmnlClient (source=trmnl)
+// implement it. main picks one from -source or SOURCE.
 type contentSource interface {
 	refresh(fc *frameStore) error
 	loop(fc *frameStore)
 	onTouch(x, y int, fc *frameStore)
 }
 
+// @brief Program entry: choose the content source, wait for a first frame, and serve Joan connections.
+//
+// @details Flags default to the matching environment variables. Retries the first refresh every 5
+// seconds until a frame exists, then starts the refresh loop, the zombie reaper, and the TCP
+// listener (default :11112).
 func main() {
 	source := flag.String("source", env("SOURCE", "ha"), `content source: "ha" (Home Assistant, default) or "trmnl"`)
 
@@ -132,9 +138,12 @@ func main() {
 	}
 }
 
-// handleConn serves a Joan connection for its full lifetime: it wraps the socket
-// as a session and runs the heartbeat exchange policy (serve). Every tap is
-// routed to the active content source, coordinates and all.
+// @brief Serve one Joan connection until it closes.
+//
+// @param conn Accepted socket. Closed on return.
+// @param fc Shared frame store.
+// @param st Shared device telemetry.
+// @param cs Active content source that receives taps.
 func handleConn(conn net.Conn, fc *frameStore, st *deviceStatus, cs contentSource) {
 	defer conn.Close()
 	remote := conn.RemoteAddr().String()
@@ -144,47 +153,59 @@ func handleConn(conn net.Conn, fc *frameStore, st *deviceStatus, cs contentSourc
 	serve(s, fc, st, func(x, y int) { cs.onTouch(x, y, fc) }, remote)
 }
 
-// session is the per-connection transport the heartbeat policy needs: read the
-// next PV3 message (waiting at most timeout) and write raw bytes. Two adapters
-// satisfy it — netSession over a real socket, and a scripted fake in tests — so
-// serve's push/ack/await logic is testable without a network.
+// @brief Per-connection transport that serve needs.
+//
+// @details read(timeout) returns the next PV3 message, waiting at most timeout. write(p) sends raw
+// bytes. netSession implements it for a real socket. Tests use a scripted fake, so serve can be
+// tested without a network.
 type session interface {
 	read(timeout time.Duration) (pv3.Message, error)
 	write(p []byte) error
 }
 
-// netSession adapts a net.Conn to session: it applies the read deadline serve
-// asks for, then decodes one framed PV3 message.
+// @brief session implementation over a net.Conn.
 type netSession struct {
 	conn net.Conn
 	r    *bufio.Reader
 }
 
+// @brief Set the read deadline, then decode one framed PV3 message.
+//
+// @param timeout Maximum wait for a message.
+// @return The message, or the read or decode error.
 func (s *netSession) read(timeout time.Duration) (pv3.Message, error) {
 	s.conn.SetReadDeadline(time.Now().Add(timeout))
 	return pv3.ReadMessage(s.r)
 }
 
+// @brief Write raw bytes to the socket.
+//
+// @param p Bytes to send.
+// @return The write error, or nil.
 func (s *netSession) write(p []byte) error {
 	_, err := s.conn.Write(p)
 	return err
 }
 
-// serve runs the heartbeat exchange policy over a session. Joan sends a Status
-// hello every heartbeat (~3 min) and a touch packet when tapped. For each
-// message: a touch calls onTouch(x, y) so the active content source can react
-// (switch dashboard page, fire an HA service call, advance a TRMNL playlist —
-// whatever it does with the tap); a hello records telemetry. Then we ACK. When
-// the stored image is new we push it — as a partial
-// update (only the changed rectangle, flicker-free) when we have a confirmed
-// baseline of what the device currently shows and the change is small enough,
-// otherwise as a full frame — and wait for Joan's image ACK.
+// @brief Run the heartbeat exchange over one session until a read fails.
 //
-// lastDisplayed is the packed framebuffer the device has actually rendered; it is
-// updated only on an image ACK and is local to the connection (nil at the start).
-// So the first push of any connection is full, a reconnect re-syncs with a full,
-// and a partial is only ever diffed against a frame we know the device shows.
+// @details serve runs the heartbeat exchange policy over a session. Joan sends a Status hello every
+// heartbeat (~3 min) and a touch packet when tapped. For each message: a touch calls onTouch(x, y)
+// so the active content source can react (switch dashboard page, fire an HA service call, advance a
+// TRMNL playlist — whatever it does with the tap); a hello records telemetry. Then we ACK. When the
+// stored image is new we push it — as a partial update (only the changed rectangle, flicker-free)
+// when we have a confirmed baseline of what the device currently shows and the change is small
+// enough, otherwise as a full frame — and wait for Joan's image ACK. lastDisplayed is the packed
+// framebuffer the device has actually rendered; it is updated only on an image ACK and is local to
+// the connection (nil at the start). So the first push of any connection is full, a reconnect
+// re-syncs with a full, and a partial is only ever diffed against a frame we know the device shows.
 // Returns when a session read fails (disconnect).
+//
+// @param s Transport for the connection.
+// @param fc Frame store with the current image.
+// @param st Receives telemetry from hello messages.
+// @param onTouch Called with raw coordinates for each tap.
+// @param remote Remote address, for log lines only.
 func serve(s session, fc *frameStore, st *deviceStatus, onTouch func(x, y int), remote string) {
 	var lastDisplayed []byte
 	for {
@@ -260,8 +281,9 @@ func serve(s session, fc *frameStore, st *deviceStatus, onTouch func(x, y int), 
 	}
 }
 
-// deviceStatus holds the latest battery/signal readings parsed from Joan's
-// Status hello, for forwarding to TRMNL on the next /api/display poll.
+// @brief Latest battery and signal readings from Joan's hello message.
+//
+// @details Forwarded to TRMNL on the next /api/display poll. Safe for concurrent use.
 type deviceStatus struct {
 	mu         sync.Mutex
 	valid      bool
@@ -270,10 +292,13 @@ type deviceStatus struct {
 	batteryPct int
 }
 
-// update stores the latest telemetry, dropping implausible readings so we never
-// forward garbage to TRMNL — a header that fails validation makes the
-// /api/display action return 404 and Joan would get no image. The ranges were
-// confirmed against the device's own readout (2000–5000 mV, RSSI ≤ 120).
+// @brief Store new telemetry when it is plausible; ignore it otherwise.
+//
+// @details Ranges (confirmed against the device's own readout): 2000 to 5000 mV, RSSI magnitude at
+// most 120, charge at most 100 percent. TRMNL answers 404 to a bad header, and then Joan gets no
+// image.
+//
+// @param t Readings parsed from a hello message.
 func (d *deviceStatus) update(t pv3.Telemetry) {
 	if t.VoltageMv < 2000 || t.VoltageMv > 5000 || t.RSSIMag > 120 || t.BatteryPct > 100 {
 		return
@@ -283,10 +308,12 @@ func (d *deviceStatus) update(t pv3.Telemetry) {
 	d.valid, d.voltageMv, d.rssiMag, d.batteryPct = true, t.VoltageMv, t.RSSIMag, t.BatteryPct
 }
 
-// setHeaders adds the telemetry headers TRMNL expects, in its units:
-// Battery-Voltage in volts, RSSI in dBm (negative), Percent-Charged 0..100.
-// No-op until a plausible hello has been parsed. The unit conversions live here,
-// next to the readings they describe, rather than leaking into the HTTP client.
+// @brief Add the TRMNL telemetry headers in TRMNL's units.
+//
+// @details Battery-Voltage in volts, RSSI in dBm (negative), Percent-Charged from 0 to 100. Does
+// nothing until a plausible hello has been stored.
+//
+// @param h Request headers to add to.
 func (d *deviceStatus) setHeaders(h http.Header) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -298,8 +325,9 @@ func (d *deviceStatus) setHeaders(h http.Header) {
 	h.Set("Percent-Charged", strconv.FormatFloat(float64(d.batteryPct), 'f', 1, 64))
 }
 
-// trmnlClient polls a TRMNL /api/display endpoint for the current image URL
-// and refresh rate, then fetches the image and encodes it for Joan.
+// @brief Content source that polls a TRMNL /api/display endpoint.
+//
+// @details Gets the image URL and refresh rate, downloads the image, and encodes it for Joan.
 type trmnlClient struct {
 	mu       sync.Mutex // serializes refresh (poll loop + touch handler both call it)
 	server   string
@@ -309,11 +337,16 @@ type trmnlClient struct {
 	status   *deviceStatus
 }
 
+// @brief The JSON fields of a TRMNL /api/display reply that this program uses.
 type displayResponse struct {
 	ImageURL    string `json:"image_url"`
 	RefreshRate int    `json:"refresh_rate"` // seconds; 0 means use fallback
 }
 
+// @brief Poll TRMNL once and store the new frame (satisfies contentSource).
+//
+// @param fc Frame store to update.
+// @return An error when the request, the status, the JSON, or the image fails. Nil also when TRMNL sends no new image.
 func (tc *trmnlClient) refresh(fc *frameStore) error {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
@@ -368,9 +401,13 @@ func (tc *trmnlClient) refresh(fc *frameStore) error {
 	return nil
 }
 
-// rewriteHost replaces the host in rawURL with the host from tc.server so that
-// URLs containing TRMNL's local hostname (e.g. umbrel.local) resolve correctly
-// inside containers that lack mDNS.
+// @brief Replace the scheme and host of a URL with those of the configured TRMNL server.
+//
+// @details TRMNL can return its local hostname (for example umbrel.local). Containers without mDNS
+// cannot resolve it.
+//
+// @param rawURL Image URL from TRMNL.
+// @return The rewritten URL, or rawURL unchanged when either URL does not parse.
 func (tc *trmnlClient) rewriteHost(rawURL string) string {
 	base, err := url.Parse(tc.server)
 	if err != nil {
@@ -385,9 +422,10 @@ func (tc *trmnlClient) rewriteHost(rawURL string) string {
 	return u.String()
 }
 
-// fetchFrame downloads the image at url and returns its packed framebuffer plus
-// its full-frame encoding. It uses no client state, but lives here because turning
-// a TRMNL poll into frames is the client's job; frameStore just holds the result.
+// @brief Download an image and encode it for Joan.
+//
+// @param url Image URL.
+// @return The packed framebuffer and the full-frame encoding, or an error.
 func (tc *trmnlClient) fetchFrame(url string) (packed, full []byte, err error) {
 	resp, err := httpClient.Get(url)
 	if err != nil {
@@ -405,15 +443,25 @@ func (tc *trmnlClient) fetchFrame(url string) (packed, full []byte, err error) {
 	return packed, pv3.EncodeFramePacked(packed), nil
 }
 
-// onTouch satisfies contentSource: any tap just re-polls TRMNL, which
-// advances its own playlist server-side — Joan's tap coordinates aren't
-// meaningful in TRMNL mode, only the fact that a tap happened.
+// @brief Re-poll TRMNL after a tap (satisfies contentSource).
+//
+// @details TRMNL advances its own playlist on the server, so only the fact of the tap matters.
+//
+// @param x Raw X coordinate. Not used.
+// @param y Raw Y coordinate. Not used.
+// @param fc Frame store to update.
 func (tc *trmnlClient) onTouch(x, y int, fc *frameStore) {
 	if err := tc.refresh(fc); err != nil {
 		log.Printf("touch refresh failed: %v", err)
 	}
 }
 
+// @brief Poll TRMNL forever (satisfies contentSource).
+//
+// @details Waits the current refresh rate between polls, at least 1 second. Errors are logged and
+// the loop continues. Never returns.
+//
+// @param fc Frame store to update.
 func (tc *trmnlClient) loop(fc *frameStore) {
 	for {
 		interval := tc.fallback
@@ -430,10 +478,11 @@ func (tc *trmnlClient) loop(fc *frameStore) {
 	}
 }
 
-// frameStore holds the current image as both its packed framebuffer (so serve can
-// diff against what the device last displayed to build a partial update) and its
-// pre-encoded full PV3 frame (the fallback). Tracks delivery state for heartbeats.
-// Pure storage — no HTTP, no image decoding.
+// @brief Holder of the current image and its delivery state.
+//
+// @details Keeps the packed framebuffer (so serve can diff it for a partial update) and the
+// pre-encoded full frame (the fallback). Tracks which version was sent. Storage only: no HTTP and no
+// image decoding. Safe for concurrent use.
 type frameStore struct {
 	mu      sync.Mutex
 	packed  []byte
@@ -442,9 +491,12 @@ type frameStore struct {
 	sent    uint64
 }
 
-// set stores the packed framebuffer and its full-frame encoding as current, and
-// bumps the version so the next heartbeat treats it as new (until markSent records
-// that version delivered).
+// @brief Store a new current frame and bump the version.
+//
+// @details The next heartbeat treats the frame as new until markSent records that version.
+//
+// @param packed Packed 4-bit framebuffer.
+// @param full Full PV3 frame encoding of the same image.
 func (fc *frameStore) set(packed, full []byte) {
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
@@ -452,16 +504,22 @@ func (fc *frameStore) set(packed, full []byte) {
 	fc.version++
 }
 
-// load returns the current packed framebuffer, its full-frame encoding, the
-// version, and whether it's unsent. Does NOT mark it sent — call markSent(version)
-// after a successful write.
+// @brief Read the current frame without marking it sent.
+//
+// @details Call markSent(version) after a successful write.
+//
+// @return The packed framebuffer, the full frame, the version, and whether the version is unsent.
 func (fc *frameStore) load() (packed, full []byte, version uint64, isNew bool) {
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
 	return fc.packed, fc.full, fc.version, fc.version > fc.sent
 }
 
-// markSent records version as delivered. Only advances fc.sent, never rolls back.
+// @brief Record a version as delivered.
+//
+// @details Only moves the sent counter forward, never back.
+//
+// @param version Version that was written to the device.
 func (fc *frameStore) markSent(version uint64) {
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
@@ -470,6 +528,11 @@ func (fc *frameStore) markSent(version uint64) {
 	}
 }
 
+// @brief Read a string environment variable.
+//
+// @param key Variable name.
+// @param def Value to use when the variable is unset or empty.
+// @return The variable or def.
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -477,6 +540,11 @@ func env(key, def string) string {
 	return def
 }
 
+// @brief Read a duration environment variable, for example "60s".
+//
+// @param key Variable name.
+// @param def Value to use when the variable is unset, empty, or not a valid duration.
+// @return The parsed duration or def.
 func envDuration(key string, def time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -486,6 +554,11 @@ func envDuration(key string, def time.Duration) time.Duration {
 	return def
 }
 
+// @brief Read an integer environment variable.
+//
+// @param key Variable name.
+// @param def Value to use when the variable is unset, empty, or not an integer.
+// @return The parsed integer or def.
 func envInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -495,19 +568,18 @@ func envInt(key string, def int) int {
 	return def
 }
 
-// reapZombies periodically cleans up dead child processes that chromedp's
-// allocator doesn't always reap on its own. Observed in practice: a
-// "chrome failed to start" render failure can leave the already-dead
-// headless-shell process as a zombie instead of waiting on it, and this
-// doesn't show up during normal operation — only when renders start
-// failing repeatedly (a stuck/unreachable HA instance, for example). Left
-// unchecked, each failed render leaks one more zombie; over enough
-// failures (days of unattended retries at REFRESH_INTERVAL) this
-// exhausts the host's process table entirely, which breaks everything
-// (docker exec, new container starts, the works), not just rendering —
-// this is what actually happened 2026-09-24 through 2026-10-01, ending in
-// ~19,000 zombie processes. wait4 with WNOHANG only reaps processes that
-// have already exited, so this can't affect a process still running.
+// @brief Reap exited child processes every 30 seconds, forever.
+//
+// @details reapZombies periodically cleans up dead child processes that chromedp's allocator doesn't
+// always reap on its own. Observed in practice: a "chrome failed to start" render failure can leave
+// the already-dead headless-shell process as a zombie instead of waiting on it, and this doesn't
+// show up during normal operation — only when renders start failing repeatedly (a stuck/unreachable
+// HA instance, for example). Left unchecked, each failed render leaks one more zombie; over enough
+// failures (days of unattended retries at REFRESH_INTERVAL) this exhausts the host's process table
+// entirely, which breaks everything (docker exec, new container starts, the works), not just
+// rendering — this is what actually happened 2026-09-24 through 2026-10-01, ending in ~19,000 zombie
+// processes. wait4 with WNOHANG only reaps processes that have already exited, so this can't affect
+// a process still running.
 func reapZombies() {
 	for {
 		time.Sleep(30 * time.Second)

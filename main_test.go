@@ -234,3 +234,40 @@ func TestDeviceStatusDropsImplausible(t *testing.T) {
 		t.Errorf("implausible telemetry forwarded: %v", h)
 	}
 }
+
+func TestEnvHelpers(t *testing.T) {
+	t.Setenv("T_STR", "x")
+	t.Setenv("T_DUR", "90s")
+	t.Setenv("T_INT", "42")
+	t.Setenv("T_BAD", "not-a-value")
+	t.Setenv("T_EMPTY", "")
+	if got := env("T_STR", "d"); got != "x" {
+		t.Errorf("env = %q", got)
+	}
+	if got := env("T_EMPTY", "d"); got != "d" {
+		t.Errorf("env empty = %q, want default", got)
+	}
+	if got := envDuration("T_DUR", time.Second); got != 90*time.Second {
+		t.Errorf("envDuration = %v", got)
+	}
+	if got := envDuration("T_BAD", time.Second); got != time.Second {
+		t.Errorf("envDuration bad = %v, want default", got)
+	}
+	if got := envInt("T_INT", 1); got != 42 {
+		t.Errorf("envInt = %d", got)
+	}
+	if got := envInt("T_BAD", 1); got != 1 {
+		t.Errorf("envInt bad = %d, want default", got)
+	}
+}
+
+func TestRewriteHost(t *testing.T) {
+	tc := &trmnlClient{server: "http://10.0.0.5:2300"}
+	got := tc.rewriteHost("http://umbrel.local/img/a.png?x=1")
+	if got != "http://10.0.0.5:2300/img/a.png?x=1" {
+		t.Errorf("rewriteHost = %q", got)
+	}
+	if got := tc.rewriteHost("http://[::bad"); got != "http://[::bad" {
+		t.Errorf("unparsable URL must pass through unchanged, got %q", got)
+	}
+}

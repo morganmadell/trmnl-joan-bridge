@@ -193,7 +193,31 @@ make build-arm     # static linux/arm64 binary → bin/trmnl-joan-bridge
 docker build -t trmnl-joan-bridge .
 ```
 
-> `go build`, `go vet`, and `go test` all pass clean. The HA render-and-auth path, and the touch/zone dispatch, are both verified end-to-end against a real Home Assistant instance (a native Windows binary plus a local Chrome; that part needs no Docker or WSL2). The Docker image itself has been built and run for a long time now (see "Running on Windows via WSL2" above), and both the image-push protocol and real touch-coordinate reporting are verified against the physical Joan-6 panel — see [`PAIRING.md`](PAIRING.md) for the pairing sessions themselves, and the parent project's `TODO.md` and `Claude_Work.md` for the full history.
+> `go vet` and `go test` pass clean in the `golang:1.26-alpine` container, which is how this project runs them. `go build` and `go vet` fail on a native Windows toolchain, because `reapZombies` in `main.go` calls `syscall.Wait4`, which exists only on Unix. Run them in WSL2 or in the container: `docker run --rm -v "$PWD":/src -w /src golang:1.26-alpine sh -c "go vet ./... && go test ./..."`. The HA render-and-auth path and the touch/zone dispatch were verified end-to-end against a real Home Assistant instance and the physical Joan-6 panel. The Docker image has been built and run for a long time now (see "Running on Windows via WSL2" above). See [`PAIRING.md`](PAIRING.md) for the pairing sessions, and the parent project's `TODO.md` and `Claude_Work.md` for the full history.
+
+### Tests
+
+Unit tests are in `*_test.go` (package `main`) and in `pv3/`. They need no network, no Chromium, and no device: HTTP calls go to `httptest` servers, and `serve` runs against a scripted fake session. The `onTouch` tests use a Chromium path that cannot start, so the re-render after a tap fails fast and is ignored.
+
+| Test file | What it covers |
+|---|---|
+| `ha_zones_test.go` | `loadZoneConfig` (valid file, missing file, a directory in place of the file, bad JSON, missing name or path, no pages), `pageByName`, `hit` |
+| `ha_client_test.go` | `callService` (request shape, error status), `currentPage` fallback, `onTouch` (180-degree flip, no-zone tap, service call) |
+| `ha_render_test.go` | `hassTokensJS` (the token must be a JS string literal that holds JSON), `kioskModeJS` (no format artifacts) |
+| `main_test.go` | `frameStore`, `serve` (full push, partial push, ACK only, touch, telemetry), `deviceStatus`, `env` helpers, `rewriteHost` |
+| `pv3/*_test.go` | Message decode, full frame encode (golden pre-header), partial update round trip and fallbacks |
+
+When a bug is found that a test could have caught, add the test in the same change. Tests added this way so far: the `hassTokens` string-literal bug, the Docker directory-in-place-of-`zones.json` failure, and the coordinate flip.
+
+### API reference (Doxygen)
+
+Every function and type has a Doxygen comment (`@brief`, `@param`, `@return`). Doxygen cannot parse Go, so `tools/doxygen_go_filter.py` turns each `.go` file into C-like declarations first. To build the HTML reference (Doxygen 1.10 or later and Python 3 are required):
+
+```bash
+doxygen Doxyfile    # output: docs/api/html/index.html (not committed)
+```
+
+PowerShell functions use comment-based help (`.SYNOPSIS`, `.PARAMETER`, `.OUTPUTS`) in place of Doxygen tags.
 
 ## Hardware notes
 
@@ -210,6 +234,9 @@ ha_render.go     Headless-Chromium screenshot (via chromedp/CDP): HA auth
                  injection + kiosk-mode chrome hiding
 ha_zones.go      zones.json (page/tap-zone config) loading and hit-testing
 zones.example.json  Starting-point zone config matching the parent project's 3-page dashboard
+*_test.go        Unit tests (see "Tests" above)
+Doxyfile         Doxygen configuration (see "API reference" above)
+tools/           measure_zones.ps1, pair_device.ps1, doxygen_go_filter.py
 pv3/             PV3 wire protocol: framing + decode, full & partial frame encode, session ACK
 docs/            reverse-engineered protocol notes — mostly this project's own original
                  research (DWARF disassembly, MITM capture analysis, VSS binary inspection),

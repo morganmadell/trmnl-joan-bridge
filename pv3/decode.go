@@ -36,33 +36,35 @@ const (
 	helloMinBody    = 400 // hello bodies are 436/512 bytes
 )
 
-// Message is one thing Joan sends on its connection: exactly one of Hello,
-// Touch, ImageAck, or Unknown. A framing or I/O failure is an error, not a
-// Message. The interface is sealed (isMessage is unexported) so callers can rely
-// on a type switch covering every variant.
+// @brief One thing Joan sends on its connection.
+//
+// @details Exactly one of Hello, Touch, ImageAck, or Unknown. Use a type switch that covers every
+// variant.
 type Message interface{ isMessage() }
 
-// Telemetry is the device-health reading carried in a Hello. RSSIMag is the
-// magnitude; the real RSSI is negative (dBm). Plausibility (sane ranges) is the
-// caller's concern — pv3 reports whatever it parsed.
+// @brief Device-health reading from a hello message.
+//
+// @details RSSIMag is the magnitude of the signal strength. The real RSSI in dBm is negative.
 type Telemetry struct {
 	VoltageMv  int
 	RSSIMag    int
 	BatteryPct int
 }
 
-// Hello is Joan's status heartbeat (~every 3 min). Telemetry is nil if the
-// hello carried no recognised telemetry keys.
+// @brief Joan's status heartbeat, sent about every 3 minutes.
+//
+// @details Telemetry is nil when the hello has no recognized telemetry keys.
 type Hello struct{ Telemetry *Telemetry }
 
-// Touch is a single screen-tap, carrying raw panel coordinates.
+// @brief A single screen tap with raw panel coordinates.
 type Touch struct{ X, Y int }
 
-// ImageAck is Joan's acknowledgement that it rendered a pushed Frame.
+// @brief Joan's acknowledgement that it rendered a pushed frame.
 type ImageAck struct{}
 
-// Unknown is a well-formed but unrecognised message; Len is the total length,
-// for logging.
+// @brief A well-formed message of an unrecognized kind.
+//
+// @details Len is the total length, for logs.
 type Unknown struct{ Len int }
 
 func (Hello) isMessage()    {}
@@ -70,10 +72,12 @@ func (Touch) isMessage()    {}
 func (ImageAck) isMessage() {}
 func (Unknown) isMessage()  {}
 
-// ReadMessage reads one complete length-prefixed PV3 message from r and
-// classifies it. Reading whole messages (rather than "whatever is buffered")
-// keeps us in sync with Joan. Deadlines are the caller's concern — set them on
-// the underlying connection before calling.
+// @brief Read one complete length-prefixed PV3 message and classify it.
+//
+// @details Reading whole messages keeps the reader in sync with Joan.
+//
+// @param r Source of bytes. Set deadlines on the underlying connection before the call.
+// @return The message, or an error for a short header, a desynced length, or a truncated body.
 func ReadMessage(r io.Reader) (Message, error) {
 	h := make([]byte, headerLen)
 	if _, err := io.ReadFull(r, h); err != nil {
@@ -92,8 +96,13 @@ func ReadMessage(r io.Reader) (Message, error) {
 	return classify(body), nil
 }
 
-// classify maps a message body to its Message type. Touch is recognised
-// structurally (length + marker); everything else falls into a body-length band.
+// @brief Map a message body to its Message type.
+//
+// @details A touch is recognized by length and marker. All other messages are sorted by body-length
+// band.
+//
+// @param body Message body without the 20-byte outer header.
+// @return Touch, ImageAck, Hello, or Unknown.
 func classify(body []byte) Message {
 	total := headerLen + len(body)
 	switch {
@@ -111,14 +120,22 @@ func classify(body []byte) Message {
 	}
 }
 
+// @brief Check the touch marker in a message body.
+//
+// @param body Message body without the outer header.
+// @return True when the body is long enough and has the touch marker.
 func isTouch(body []byte) bool {
 	return len(body) >= touchYOff+2 &&
 		binary.LittleEndian.Uint16(body[touchMarkerOff:]) == touchMarkerVal
 }
 
-// parseTelemetry walks the hello key-value list and returns the battery/RSSI/
-// charge readings, or nil if any of the three keys is absent. No range check —
-// plausibility belongs with the caller that forwards to TRMNL.
+// @brief Read the battery, RSSI, and charge values from a hello body.
+//
+// @details Walks the key-value list until the end sentinel. Does no range check: the caller that
+// forwards to TRMNL does that.
+//
+// @param body Hello body.
+// @return The readings, or nil when any of the three keys is missing.
 func parseTelemetry(body []byte) *Telemetry {
 	var v, r, p uint32
 	var haveV, haveR, haveP bool

@@ -1,0 +1,24 @@
+# Doxygen configuration for the Go bridge.
+# Doxygen has no Go parser. tools/doxygen_go_filter.py rewrites each .go file into
+# C-like declarations that keep the @brief/@param/@return comment blocks.
+# Run from this directory:  doxygen Doxyfile   (output: docs/api/html/index.html)
+PROJECT_NAME           = "trmnl-joan-bridge"
+PROJECT_BRIEF          = "Joan 6 e-ink panel bridge for Home Assistant"
+OUTPUT_DIRECTORY       = docs/api
+INPUT                  = . pv3
+FILE_PATTERNS          = *.go
+EXCLUDE_PATTERNS       = *_test.go */exploration/* */.agents/* */.claude/*
+RECURSIVE              = NO
+EXTENSION_MAPPING      = go=C++
+FILTER_PATTERNS        = *.go="python tools/doxygen_go_filter.py"
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+JAVADOC_AUTOBRIEF      = NO
+QT_AUTOBRIEF           = NO
+SOURCE_BROWSER         = NO
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_AS_ERROR          = NO

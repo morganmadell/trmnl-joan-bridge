@@ -121,12 +121,28 @@ $ResponseOverallTimeoutMs = 3000
 $ResponseIdleGapMs = 400
 $ResponsePollIntervalMs = 100
 
-# ----------------------------------------------------------------------
-# Reads a response from the serial port defensively: no assumption is made
-# about a line terminator. Instead this polls ReadExisting() in a loop,
-# accumulating text, and returns once either a short quiet period follows
-# some received data, or the overall timeout elapses with nothing at all.
-# ----------------------------------------------------------------------
+<#
+.SYNOPSIS
+Read a response from the serial port without assuming a line terminator.
+
+.DESCRIPTION
+Polls ReadExisting() in a loop and accumulates the text. Returns when a quiet period follows some received data, or when the overall timeout ends with nothing received. A failed read counts as "no data" for that cycle.
+
+.PARAMETER Port
+Open System.IO.Ports.SerialPort to read from.
+
+.PARAMETER OverallTimeoutMs
+Longest total wait in milliseconds.
+
+.PARAMETER IdleGapMs
+Quiet time in milliseconds after the last data that ends the read.
+
+.PARAMETER PollIntervalMs
+Time in milliseconds between polls.
+
+.OUTPUTS
+System.String. The text received, or an empty string.
+#>
 function Read-SerialResponse {
     param(
         [Parameter(Mandatory = $true)]
@@ -172,11 +188,22 @@ function Read-SerialResponse {
     return $received.ToString()
 }
 
-# ----------------------------------------------------------------------
-# Sends one command (with the configured terminator appended), reads the
-# response with the idle-gap poll above, prints both, and returns the raw
-# response text.
-# ----------------------------------------------------------------------
+<#
+.SYNOPSIS
+Send one command to the device and read its response.
+
+.DESCRIPTION
+Discards pending input, writes the command with the configured terminator, reads the response with Read-SerialResponse, prints both, and returns the response.
+
+.PARAMETER Port
+Open System.IO.Ports.SerialPort to use.
+
+.PARAMETER Command
+Command text without the terminator.
+
+.OUTPUTS
+System.String. The raw response text.
+#>
 function Send-Command {
     param(
         [Parameter(Mandatory = $true)]

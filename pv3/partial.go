@@ -10,16 +10,19 @@ const colStartByteOffset = colStartOffset / 2 // 112
 // no larger.
 const maxPartialFraction = 6
 
-// EncodePartial builds a partial-update PV3 frame that repaints only the bounding
-// box of the bytes that changed between prev and next — both packed gray4
-// framebuffers (PanelW*PanelH/2 bytes) as produced by Pack. It is encodeRegion
-// over the dirty rectangle: the same frame as EncodeFrame but with a sub-region
-// RectangleHeader and only the region's pixels, which the device composites onto
-// its current framebuffer with a flicker-free waveform.
+// @brief Build a partial-update frame that repaints only what changed.
 //
-// Returns ok=false — the caller falls back to EncodeFrame — when nothing changed,
-// when the dirty box spans too much of the screen, or when the region is too small
-// to fill the fixed tail. See docs/partial-updates.md.
+// @details EncodePartial builds a partial-update PV3 frame that repaints only the bounding box of
+// the bytes that changed between prev and next — both packed gray4 framebuffers (PanelW*PanelH/2
+// bytes) as produced by Pack. It is encodeRegion over the dirty rectangle: the same frame as
+// EncodeFrame but with a sub-region RectangleHeader and only the region's pixels, which the device
+// composites onto its current framebuffer with a flicker-free waveform. Returns ok=false — the
+// caller falls back to EncodeFrame — when nothing changed, when the dirty box spans too much of the
+// screen, or when the region is too small to fill the fixed tail. See docs/partial-updates.md.
+//
+// @param prev Packed framebuffer the device shows now.
+// @param next Packed framebuffer to show.
+// @return The frame and ok=true. ok=false (use EncodeFrame instead) when nothing changed, the change is too large, or the region is too small for the fixed tail.
 func EncodePartial(prev, next []byte) (frame []byte, ok bool) {
 	r, ok := dirtyRect(prev, next)
 	if !ok {
@@ -28,11 +31,17 @@ func EncodePartial(prev, next []byte) (frame []byte, ok bool) {
 	return encodeRegion(readRegion(next, r), r), true
 }
 
-// dirtyRect returns the panel-space bounding box of the bytes that differ between
-// prev and next, or ok=false when there is no change worth a partial (nothing
-// changed, too large, or too small to fill the tail). A packed byte at index i
-// sits at row i/rowBytes and packed column i%rowBytes; the panel byte-column is
-// (packed column + colStartByteOffset) mod rowBytes — undoing the scan shift.
+// @brief Find the bounding box of the bytes that differ.
+//
+// @details dirtyRect returns the panel-space bounding box of the bytes that differ between prev and
+// next, or ok=false when there is no change worth a partial (nothing changed, too large, or too
+// small to fill the tail). A packed byte at index i sits at row i/rowBytes and packed column
+// i%rowBytes; the panel byte-column is (packed column + colStartByteOffset) mod rowBytes — undoing
+// the scan shift.
+//
+// @param prev Previous packed framebuffer.
+// @param next New packed framebuffer.
+// @return The panel-space rectangle and true, or false when there is no change worth a partial update.
 func dirtyRect(prev, next []byte) (rect, bool) {
 	fbSize := PanelW * PanelH / 2
 	rowBytes := PanelW / 2 // 512
@@ -69,10 +78,15 @@ func dirtyRect(prev, next []byte) (rect, bool) {
 	return r, true
 }
 
-// readRegion extracts rectangle r's packed pixels from a framebuffer, undoing the
-// scan-start shift so region byte (row, cb) reads framebuffer[(y+row)*rowBytes +
-// ((x/2 + cb − colStartByteOffset) mod rowBytes)]. Returns r.payload() bytes,
-// row-major with stride r.w/2.
+// @brief Extract the packed pixels of a rectangle from a framebuffer.
+//
+// @details readRegion extracts rectangle r's packed pixels from a framebuffer, undoing the
+// scan-start shift so region byte (row, cb) reads framebuffer[(y+row)*rowBytes + ((x/2 + cb −
+// colStartByteOffset) mod rowBytes)]. Returns r.payload() bytes, row-major with stride r.w/2.
+//
+// @param packed Packed framebuffer.
+// @param r Rectangle to read.
+// @return r.payload() bytes, row-major, with stride r.w/2.
 func readRegion(packed []byte, r rect) []byte {
 	rowBytes := PanelW / 2
 	wb, xb := r.w/2, r.x/2
