@@ -44,6 +44,9 @@ jobs:
       - name: go test
         run: go test ./...
 
+      - name: Doxygen filter tests
+        run: python3 -m unittest tools/test_doxygen_go_filter.py
+
   build:
     needs: test
     # Only publish images on pushes to main, not on pull requests.

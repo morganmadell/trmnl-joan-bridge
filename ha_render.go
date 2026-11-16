@@ -52,18 +52,23 @@ func renderDashboard(chromiumBin, haURL, haToken, dashboardPath string, waitMs i
 	}
 
 	var buf []byte
+	var sections int
 	err = chromedp.Run(ctx,
 		chromedp.EmulateViewport(int64(pv3.PanelW), int64(pv3.PanelH)),
 		chromedp.Navigate(haURL+"/"),
 		chromedp.Evaluate(setTokenJS, nil),
 		chromedp.Navigate(haURL+dashboardPath),
 		chromedp.Sleep(time.Duration(waitMs)*time.Millisecond),
+		chromedp.Evaluate(countSectionsJS, &sections),
 		chromedp.Evaluate(kioskModeJS(pv3.PanelW, pv3.PanelH), nil),
 		chromedp.Sleep(300*time.Millisecond), // let layout settle after the style overrides
 		chromedp.CaptureScreenshot(&buf),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("render %s: %w", dashboardPath, err)
+	}
+	if sections == 0 {
+		return nil, fmt.Errorf("render %s: no dashboard section on the page (login screen, wrong path, or a changed Home Assistant frontend)", dashboardPath)
 	}
 
 	if saveDir := env("DEBUG_SAVE_SCREENSHOTS", ""); saveDir != "" {
@@ -75,7 +80,51 @@ func renderDashboard(chromiumBin, haURL, haToken, dashboardPath string, waitMs i
 	if err != nil {
 		return nil, fmt.Errorf("decode screenshot: %w", err)
 	}
+	if !leftStripBlank(img, leftStripWidth) {
+		log.Printf("render %s: the left edge is not blank; kiosk mode may have stopped hiding the Home Assistant sidebar", dashboardPath)
+	}
 	return img, nil
+}
+
+// leftStripWidth is the width in pixels of the left edge that must stay blank in a kiosk-mode render.
+const leftStripWidth = 8
+
+// countSectionsJS counts the dashboard sections on the page. Zero means the dashboard did not render.
+const countSectionsJS = `
+(function() {
+  function q(root, tag, out) {
+    Array.from(root.children || []).forEach(function(el) {
+      if (el.tagName === tag) out.push(el);
+      q(el, tag, out);
+      if (el.shadowRoot) q(el.shadowRoot, tag, out);
+    });
+  }
+  var found = [];
+  q(document.body, 'HUI-GRID-SECTION', found);
+  return found.length;
+})()
+`
+
+// @brief Check that the left edge of a render is blank.
+//
+// @details The dashboard layout keeps a margin on the left. Anything dark in the first pixels means
+// the Home Assistant sidebar is visible again, for example after a frontend update that renamed the
+// element that kioskModeJS hides.
+//
+// @param img Rendered screenshot.
+// @param width Width in pixels of the left strip to check.
+// @return True when every pixel in the strip is light (luminance 240 or more).
+func leftStripBlank(img image.Image, width int) bool {
+	b := img.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < min(b.Min.X+width, b.Max.X); x++ {
+			r, g, bl, _ := img.At(x, y).RGBA()
+			if (299*r+587*g+114*bl)/1000>>8 < 240 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // @brief Build the JavaScript that signs the Home Assistant frontend in with a long-lived token.

@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/draw"
 	"strings"
 	"testing"
 )
@@ -47,5 +50,21 @@ func TestKioskModeJSFormatting(t *testing.T) {
 		if !strings.Contains(js, want) {
 			t.Errorf("missing %q", want)
 		}
+	}
+}
+
+func TestLeftStripBlank(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 100, 50))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.Gray{Y: 255}), image.Point{}, draw.Src)
+	if !leftStripBlank(img, 8) {
+		t.Error("all-white image must be blank")
+	}
+	img.SetGray(20, 10, color.Gray{Y: 0})
+	if !leftStripBlank(img, 8) {
+		t.Error("a dark pixel outside the strip must not matter")
+	}
+	img.SetGray(3, 10, color.Gray{Y: 0})
+	if leftStripBlank(img, 8) {
+		t.Error("a dark pixel inside the strip must fail the check")
 	}
 }

@@ -50,7 +50,6 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"syscall"
 	"time"
 
 	"trmnl-joan-bridge/pv3"
@@ -456,6 +455,17 @@ func (tc *trmnlClient) onTouch(x, y int, fc *frameStore) {
 	}
 }
 
+// @brief Return the wait before the next TRMNL poll.
+//
+// @details Reads the refresh rate under the mutex, because refresh writes it. Never less than 1 second.
+//
+// @return The current refresh rate, at least 1 second.
+func (tc *trmnlClient) pollInterval() time.Duration {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+	return max(tc.fallback, time.Second)
+}
+
 // @brief Poll TRMNL forever (satisfies contentSource).
 //
 // @details Waits the current refresh rate between polls, at least 1 second. Errors are logged and
@@ -464,11 +474,7 @@ func (tc *trmnlClient) onTouch(x, y int, fc *frameStore) {
 // @param fc Frame store to update.
 func (tc *trmnlClient) loop(fc *frameStore) {
 	for {
-		interval := tc.fallback
-		if interval < time.Second {
-			interval = time.Second
-		}
-		time.Sleep(interval)
+		time.Sleep(tc.pollInterval())
 		if err := tc.refresh(fc); err != nil {
 			log.Printf("TRMNL refresh failed: %v", err)
 			continue
@@ -566,29 +572,4 @@ func envInt(key string, def int) int {
 		}
 	}
 	return def
-}
-
-// @brief Reap exited child processes every 30 seconds, forever.
-//
-// @details reapZombies periodically cleans up dead child processes that chromedp's allocator doesn't
-// always reap on its own. Observed in practice: a "chrome failed to start" render failure can leave
-// the already-dead headless-shell process as a zombie instead of waiting on it, and this doesn't
-// show up during normal operation — only when renders start failing repeatedly (a stuck/unreachable
-// HA instance, for example). Left unchecked, each failed render leaks one more zombie; over enough
-// failures (days of unattended retries at REFRESH_INTERVAL) this exhausts the host's process table
-// entirely, which breaks everything (docker exec, new container starts, the works), not just
-// rendering — this is what actually happened 2026-09-24 through 2026-10-01, ending in ~19,000 zombie
-// processes. wait4 with WNOHANG only reaps processes that have already exited, so this can't affect
-// a process still running.
-func reapZombies() {
-	for {
-		time.Sleep(30 * time.Second)
-		for {
-			var status syscall.WaitStatus
-			pid, err := syscall.Wait4(-1, &status, syscall.WNOHANG, nil)
-			if pid <= 0 || err != nil {
-				break
-			}
-		}
-	}
 }

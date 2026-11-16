@@ -97,16 +97,40 @@ func (h *haClient) refresh(fc *frameStore) error {
 //
 // @details Home Assistant gives no refresh rate, so the interval is REFRESH_INTERVAL. A longer
 // interval gives less e-ink ghosting and less battery use. Render errors are logged and the loop
-// continues. Never returns.
+// continues, and the wait doubles after each failure in a row (see backoff). Never returns.
 //
 // @param fc Frame store to update.
 func (h *haClient) loop(fc *frameStore) {
+	failures := 0
 	for {
-		time.Sleep(h.fallback)
+		time.Sleep(backoff(h.fallback, failures))
 		if err := h.refresh(fc); err != nil {
-			log.Printf("HA render failed: %v", err)
+			failures++
+			log.Printf("HA render failed (%d in a row): %v", failures, err)
+			continue
 		}
+		failures = 0
 	}
+}
+
+// maxRenderBackoff caps the wait between renders after repeated failures.
+const maxRenderBackoff = 10 * time.Minute
+
+// @brief Compute the wait before the next render after a number of failures in a row.
+//
+// @details A stuck Home Assistant makes every render fail. Without a back-off, each failure starts
+// one more Chromium process, which is how the 2026-10 zombie build-up started.
+//
+// @param base Normal interval between renders.
+// @param failures Number of failed renders in a row. Zero gives base.
+// @return base doubled once per failure, capped at maxRenderBackoff (or at base when base is larger).
+func backoff(base time.Duration, failures int) time.Duration {
+	limit := max(maxRenderBackoff, base)
+	d := base
+	for i := 0; i < failures && d < limit; i++ {
+		d *= 2
+	}
+	return min(d, limit)
 }
 
 // @brief Handle a tap (satisfies contentSource).

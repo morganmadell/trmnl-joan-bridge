@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"trmnl-joan-bridge/pv3"
 )
@@ -106,5 +107,28 @@ func TestOnTouchServiceCall(t *testing.T) {
 	}
 	if h.curPage != "controls" {
 		t.Errorf("curPage = %q, want controls (service call keeps page)", h.curPage)
+	}
+}
+
+func TestBackoff(t *testing.T) {
+	base := 60 * time.Second
+	tests := []struct {
+		failures int
+		want     time.Duration
+	}{
+		{0, base},
+		{1, 2 * base},
+		{2, 4 * base},
+		{3, 8 * base},
+		{4, maxRenderBackoff},
+		{50, maxRenderBackoff},
+	}
+	for _, tc := range tests {
+		if got := backoff(base, tc.failures); got != tc.want {
+			t.Errorf("backoff(%v, %d) = %v, want %v", base, tc.failures, got, tc.want)
+		}
+	}
+	if got := backoff(time.Hour, 3); got != time.Hour {
+		t.Errorf("a base above the cap must stay at base, got %v", got)
 	}
 }
