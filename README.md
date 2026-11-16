@@ -193,7 +193,7 @@ make build-arm     # static linux/arm64 binary → bin/trmnl-joan-bridge
 docker build -t trmnl-joan-bridge .
 ```
 
-> `go vet` and `go test` pass clean in the `golang:1.26-alpine` container, which is how this project runs them. `go build` and `go vet` fail on a native Windows toolchain, because `reapZombies` in `main.go` calls `syscall.Wait4`, which exists only on Unix. Run them in WSL2 or in the container: `docker run --rm -v "$PWD":/src -w /src golang:1.26-alpine sh -c "go vet ./... && go test ./..."`. The HA render-and-auth path and the touch/zone dispatch were verified end-to-end against a real Home Assistant instance and the physical Joan-6 panel. The Docker image has been built and run for a long time now (see "Running on Windows via WSL2" above). See [`PAIRING.md`](PAIRING.md) for the pairing sessions, and the parent project's `TODO.md` and `Claude_Work.md` for the full history.
+> `go build`, `go vet`, and `go test` pass clean on native Windows and in the `golang:1.26-alpine` container. The Unix-only zombie reaper is in `reap_unix.go`, with a no-op in `reap_other.go`. The HA render-and-auth path and the touch/zone dispatch were verified end-to-end against a real Home Assistant instance and the physical Joan-6 panel. The Docker image has been built and run for a long time now (see "Running on Windows via WSL2" above). See [`PAIRING.md`](PAIRING.md) for the pairing sessions, and the parent project's `TODO.md` and `Claude_Work.md` for the full history.
 
 ### Tests
 
@@ -202,9 +202,13 @@ Unit tests are in `*_test.go` (package `main`) and in `pv3/`. They need no netwo
 | Test file | What it covers |
 |---|---|
 | `ha_zones_test.go` | `loadZoneConfig` (valid file, missing file, a directory in place of the file, bad JSON, missing name or path, no pages), `pageByName`, `hit` |
-| `ha_client_test.go` | `callService` (request shape, error status), `currentPage` fallback, `onTouch` (180-degree flip, no-zone tap, service call) |
-| `ha_render_test.go` | `hassTokensJS` (the token must be a JS string literal that holds JSON), `kioskModeJS` (no format artifacts) |
+| `ha_client_test.go` | `callService` (request shape, error status), `currentPage` fallback, `onTouch` (180-degree flip, no-zone tap, service call), `backoff` |
+| `ha_render_test.go` | `hassTokensJS` (the token must be a JS string literal that holds JSON), `kioskModeJS` (no format artifacts), `leftStripBlank` |
 | `main_test.go` | `frameStore`, `serve` (full push, partial push, ACK only, touch, telemetry), `deviceStatus`, `env` helpers, `rewriteHost` |
+| `trmnl_test.go` | TRMNL mode: `refresh` (headers, frame, refresh rate, error status), `pollInterval` |
+| `reap_unix_test.go` | `reapOnce` reaps an exited child (Unix only) |
+| `tools/test_doxygen_go_filter.py` | The Doxygen filter. Run: `python -m unittest tools/test_doxygen_go_filter.py` (also in CI) |
+| `tools/pair_device.Tests.ps1` | `Read-SerialResponse` and `Send-Command` against a fake serial port. Run: `Invoke-Pester tools/pair_device.Tests.ps1` |
 | `pv3/*_test.go` | Message decode, full frame encode (golden pre-header), partial update round trip and fallbacks |
 
 When a bug is found that a test could have caught, add the test in the same change. Tests added this way so far: the `hassTokens` string-literal bug, the Docker directory-in-place-of-`zones.json` failure, and the coordinate flip.
@@ -233,10 +237,11 @@ ha_client.go     Home Assistant content source: page state, tap routing, HA serv
 ha_render.go     Headless-Chromium screenshot (via chromedp/CDP): HA auth
                  injection + kiosk-mode chrome hiding
 ha_zones.go      zones.json (page/tap-zone config) loading and hit-testing
+reap_unix.go     Zombie-process reaper (Unix only; reap_other.go is the no-op for other systems)
 zones.example.json  Starting-point zone config matching the parent project's 3-page dashboard
 *_test.go        Unit tests (see "Tests" above)
 Doxyfile         Doxygen configuration (see "API reference" above)
-tools/           measure_zones.ps1, pair_device.ps1, doxygen_go_filter.py
+tools/           measure_zones.ps1, pair_device.ps1, doxygen_go_filter.py, and their tests
 pv3/             PV3 wire protocol: framing + decode, full & partial frame encode, session ACK
 docs/            reverse-engineered protocol notes — mostly this project's own original
                  research (DWARF disassembly, MITM capture analysis, VSS binary inspection),
