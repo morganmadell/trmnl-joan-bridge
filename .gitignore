@@ -29,3 +29,6 @@ exploration/
 
 # Doxygen output (see Doxyfile)
 docs/api/
+
+# Output of -render-check (see README "After each Home Assistant upgrade")
+render-check/
