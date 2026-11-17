@@ -16,7 +16,7 @@ import (
 // VSS block layout for a full frame — the 80 dataBlocks cover the first blockTotal
 // bytes, the pre-header tail carries the remaining preHdrRawSz:
 //
-//	79 blocks × 4800 bytes = 375600 bytes
+//	79 blocks × 4800 bytes = 379200 bytes
 //	 1 block  × 4176 bytes =   4176 bytes  (last block, partial)
 //	 total in blocks:         383376 bytes  (pixels 0..766751)
 //	 pre-header raw:            4720 bytes  (pixels 766752..776191)
@@ -44,8 +44,7 @@ var fullScreen = rect{x: 0, y: 0, w: PanelW, h: PanelH}
 
 // preamble is the 60-byte pre-header preamble captured from a real VSS frame for
 // this device: leading zeros, the device UUID, the PacketImage type (5), and two
-// nonce fields Joan does NOT validate (verified on device). encodeRegion rewrites
-// the two payload-size fields at bytes 32 and 52 per region; the 24-byte
+// nonce fields Joan does NOT validate (verified on device). buildPreHeader rewrites the two payload-size fields at bytes 32 and 52 per region; the 24-byte
 // RectangleHeader and the raw tail pixels follow it. See docs/pv3-frame-format.md.
 var preamble = mustDecodeHex(
 	"0000000000000000420028000d513731373439340000000005000000" +
@@ -57,7 +56,7 @@ var preamble = mustDecodeHex(
 // @details Packs the image with Pack and encodes it with encodeRegion over the full-screen
 // rectangle.
 //
-// @param src Image of the panel size.
+// @param src Image of any size. It is scaled to the panel size.
 // @return The complete frame bytes.
 func EncodeFrame(src image.Image) []byte {
 	return EncodeFramePacked(Pack(src))
@@ -135,7 +134,7 @@ func buildPreHeader(r rect, tail []byte) []byte {
 // @brief Build the 24-byte RectangleHeader for a region.
 //
 // @details rectHeader is the 24-byte RectangleHeader for region r: ImageType=1 (Gray), Encoding=4
-// (4-bit), RectangleUpdateOptions=0x0102 (4-bit), PayloadLength=w*h/2. All little-endian.
+// (4-bit), RectangleUpdateOptions=0x0102 (4-bit), PayloadLength=w*h/2, plus the x, y, w, and h of the rectangle. All little-endian.
 //
 // @param r Rectangle being painted.
 // @return The header bytes, little-endian.
@@ -197,7 +196,7 @@ func buildBlocks(data []byte) (out []byte, count int) {
 // scan order. Keep the result of the last displayed image and pass it to EncodePartial with the next
 // one.
 //
-// @param src Image of the panel size.
+// @param src Image of any size. It is scaled to the panel size.
 // @return PanelW*PanelH/2 bytes.
 func Pack(src image.Image) []byte {
 	return toPackedGray4(rotateImage(src, 180))
@@ -263,7 +262,7 @@ const colStartOffset = 224
 // diffuses each pixel's rounding error to its unprocessed neighbors, so a thin stroke's average
 // darkness survives even though every individual pixel is still forced to one of the 16 levels.
 //
-// @param src Image of the panel size, already rotated.
+// @param src Image of any size, already rotated. It is scaled to the panel size.
 // @return 388096 bytes.
 func toPackedGray4(src image.Image) []byte {
 	dst := image.NewNRGBA(image.Rect(0, 0, PanelW, PanelH))

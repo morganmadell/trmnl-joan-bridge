@@ -9,7 +9,7 @@ import (
 // @brief What happens when a tap lands in a zone.
 //
 // @details Set Page to switch to another page, or set Domain, Service, and Entity to call a Home
-// Assistant service. Set exactly one of the two in each zones.json entry.
+// Assistant service. Set one of the two in each zones.json entry. Nothing checks this: Page wins if both are set, and Entity may be empty.
 type zoneAction struct {
 	Page    string `json:"page,omitempty"`    // name of the page to switch to
 	Domain  string `json:"domain,omitempty"`  // HA service domain, e.g. "media_player"

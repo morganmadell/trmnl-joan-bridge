@@ -119,7 +119,7 @@ const maxRenderBackoff = 10 * time.Minute
 // @brief Compute the wait before the next render after a number of failures in a row.
 //
 // @details A stuck Home Assistant makes every render fail. Without a back-off, each failure starts
-// one more Chromium process, which is how the 2026-10 zombie build-up started.
+// one more Chromium process, which is how the 2026-09-24 zombie build-up started.
 //
 // @param base Normal interval between renders.
 // @param failures Number of failed renders in a row. Zero gives base.

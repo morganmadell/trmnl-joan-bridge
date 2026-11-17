@@ -70,8 +70,7 @@ type contentSource interface {
 
 // @brief Program entry: choose the content source, wait for a first frame, and serve Joan connections.
 //
-// @details Flags default to the matching environment variables. Retries the first refresh every 5
-// seconds until a frame exists, then starts the refresh loop, the zombie reaper, and the TCP
+// @details Flags default to the matching environment variables. Retries the first refresh every 5 seconds after an error, and every 10 seconds while no frame exists. Then starts the refresh loop, the zombie reaper, and the TCP
 // listener (default :11112).
 func main() {
 	source := flag.String("source", env("SOURCE", "ha"), `content source: "ha" (Home Assistant, default) or "trmnl"`)
@@ -191,14 +190,14 @@ func (s *netSession) write(p []byte) error {
 // @details serve runs the heartbeat exchange policy over a session. Joan sends a Status hello every
 // heartbeat (~3 min) and a touch packet when tapped. For each message: a touch calls onTouch(x, y)
 // so the active content source can react (switch dashboard page, fire an HA service call, advance a
-// TRMNL playlist — whatever it does with the tap); a hello records telemetry. Then we ACK. When the
+// TRMNL playlist — whatever it does with the tap); a hello records telemetry. Then we ACK, but only when a frame exists. When the
 // stored image is new we push it — as a partial update (only the changed rectangle, flicker-free)
 // when we have a confirmed baseline of what the device currently shows and the change is small
-// enough, otherwise as a full frame — and wait for Joan's image ACK. lastDisplayed is the packed
+// enough, otherwise as a full frame — and wait up to 15 seconds for the next message. Only an image ACK updates lastDisplayed. Any other message in that window (for example a tap) is logged and dropped. lastDisplayed is the packed
 // framebuffer the device has actually rendered; it is updated only on an image ACK and is local to
 // the connection (nil at the start). So the first push of any connection is full, a reconnect
 // re-syncs with a full, and a partial is only ever diffed against a frame we know the device shows.
-// Returns when a session read fails (disconnect).
+// Returns on a read or write error (a disconnect, or no image ACK within 15 seconds after a push), or when no frame is ready.
 //
 // @param s Transport for the connection.
 // @param fc Frame store with the current image.
@@ -339,7 +338,7 @@ type trmnlClient struct {
 // @brief The JSON fields of a TRMNL /api/display reply that this program uses.
 type displayResponse struct {
 	ImageURL    string `json:"image_url"`
-	RefreshRate int    `json:"refresh_rate"` // seconds; 0 means use fallback
+	RefreshRate int    `json:"refresh_rate"` // seconds; 0 keeps the current interval
 }
 
 // @brief Poll TRMNL once and store the new frame (satisfies contentSource).
@@ -360,7 +359,7 @@ func (tc *trmnlClient) refresh(fc *frameStore) error {
 	// render sizing. Constant integers, so always valid.
 	req.Header.Set("Width", strconv.Itoa(pv3.PanelW))
 	req.Header.Set("Height", strconv.Itoa(pv3.PanelH))
-	// Report our poll cadence (the refresh_rate TRMNL last gave us).
+	// Report our poll cadence (the last positive refresh_rate TRMNL gave us, or the configured interval before that).
 	req.Header.Set("Refresh-Rate", strconv.Itoa(int(tc.fallback.Seconds())))
 	// Forward the latest device telemetry (deviceStatus owns the units and the
 	// TRMNL header contract); a no-op until a hello has been parsed.

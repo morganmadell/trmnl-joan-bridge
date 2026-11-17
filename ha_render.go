@@ -20,15 +20,14 @@ import (
 // session without a login form. localStorage is per origin, so the token is set on a page loaded
 // from haURL, and then the dashboard path is loaded. The token value must be a JS string literal (a
 // JSON-encoded JSON string). A raw object is coerced to "[object Object]". Both mistakes were real
-// bugs on first test (see Claude_Work.md). Set DEBUG_SAVE_SCREENSHOTS to a directory to keep the
-// last render.
+// bugs on first test (see Claude_Work.md). Set DEBUG_SAVE_SCREENSHOTS to a directory to keep the last successful render.
 //
 // @param chromiumBin Chromium executable name or path (differs by base image, see Dockerfile).
 // @param haURL Home Assistant base URL without a trailing slash.
 // @param haToken Long-lived access token.
 // @param dashboardPath Dashboard path appended to haURL.
 // @param waitMs Settle time in milliseconds after navigation. The overall timeout is this plus 15 seconds.
-// @return The screenshot as an image of the panel size, or an error.
+// @return The screenshot, or an error. The browser window is set to the panel size, but the size of the result is not checked.
 func renderDashboard(chromiumBin, haURL, haToken, dashboardPath string, waitMs int) (image.Image, error) {
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.ExecPath(chromiumBin),
@@ -68,7 +67,7 @@ func renderDashboard(chromiumBin, haURL, haToken, dashboardPath string, waitMs i
 		return nil, fmt.Errorf("render %s: %w", dashboardPath, err)
 	}
 	if sections == 0 {
-		return nil, fmt.Errorf("render %s: no dashboard section on the page (login screen, wrong path, or a changed Home Assistant frontend)", dashboardPath)
+		return nil, fmt.Errorf("render %s: no dashboard section on the page (login screen, wrong path, a view type other than sections, or a changed Home Assistant frontend)", dashboardPath)
 	}
 
 	if saveDir := env("DEBUG_SAVE_SCREENSHOTS", ""); saveDir != "" {
@@ -89,7 +88,7 @@ func renderDashboard(chromiumBin, haURL, haToken, dashboardPath string, waitMs i
 // leftStripWidth is the width in pixels of the left edge that must stay blank in a kiosk-mode render.
 const leftStripWidth = 8
 
-// countSectionsJS counts the dashboard sections on the page. Zero means the dashboard did not render.
+// countSectionsJS counts the dashboard sections on the page. Zero means no sections-view dashboard rendered: a login screen, a wrong path, or a view that is not of type sections.
 const countSectionsJS = `
 (function() {
   function q(root, tag, out) {
@@ -254,7 +253,7 @@ func kioskModeJS(panelW, panelH int) string {
 
 // @brief Write the last render to DIR/latest-render.png, overwriting the previous one.
 //
-// @details Use it to tell a login screen from a real layout problem. Write errors are logged, not
+// @details Use it to diagnose layout problems. Only renders that passed the section check are saved, so a login screen is never saved. Write errors are logged, not
 // returned.
 //
 // @param dir Existing, writable directory (DEBUG_SAVE_SCREENSHOTS).

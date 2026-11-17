@@ -18,11 +18,11 @@ const maxPartialFraction = 6
 // EncodeFrame but with a sub-region RectangleHeader and only the region's pixels, which the device
 // composites onto its current framebuffer with a flicker-free waveform. Returns ok=false — the
 // caller falls back to EncodeFrame — when nothing changed, when the dirty box spans too much of the
-// screen, or when the region is too small to fill the fixed tail. See docs/partial-updates.md.
+// screen, when the region is too small to fill the fixed tail, or when either buffer is not PanelW*PanelH/2 bytes. See docs/partial-updates.md.
 //
 // @param prev Packed framebuffer the device shows now.
 // @param next Packed framebuffer to show.
-// @return The frame and ok=true. ok=false (use EncodeFrame instead) when nothing changed, the change is too large, or the region is too small for the fixed tail.
+// @return The frame and ok=true. ok=false (use EncodeFrame instead) when nothing changed, the change is too large, the region is too small for the fixed tail, or either buffer has the wrong size.
 func EncodePartial(prev, next []byte) (frame []byte, ok bool) {
 	r, ok := dirtyRect(prev, next)
 	if !ok {
@@ -41,7 +41,7 @@ func EncodePartial(prev, next []byte) (frame []byte, ok bool) {
 //
 // @param prev Previous packed framebuffer.
 // @param next New packed framebuffer.
-// @return The panel-space rectangle and true, or false when there is no change worth a partial update.
+// @return The panel-space rectangle and true, or false when there is no change worth a partial update, or when a buffer has the wrong size.
 func dirtyRect(prev, next []byte) (rect, bool) {
 	fbSize := PanelW * PanelH / 2
 	rowBytes := PanelW / 2 // 512

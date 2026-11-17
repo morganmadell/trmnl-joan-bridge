@@ -61,6 +61,8 @@ This dashboard will not show meaningful data until you replace the following wit
 
 - **`history-graph` entities** (Graphs page) — the two `history-graph` cards reference the same `sensor.plant_sensor_*` and `sensor.bermuda_global_*` entities used on the Sensors page, with friendly `name:` labels. Update these to match whatever entities you kept after the changes above.
 
+**Every view must be of type `sections`.** The bridge counts `hui-grid-section` elements after the page loads. A render that finds none (a login screen, a wrong path, or a masonry or panel view) fails with an error, and the panel keeps its last frame. The kiosk-mode script depends on the sections view too.
+
 ## 5. Why every card is a `markdown` card with heading levels
 
 Every single card in this dashboard is a `type: markdown` card, and every one of them uses Markdown heading syntax (`#`, `##`) combined with `<small>` and `<br>` HTML tags for layout and text sizing — for example:

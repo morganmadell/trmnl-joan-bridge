@@ -9,8 +9,7 @@ import (
 
 // @brief Reap every child process that has already exited.
 //
-// @details wait4 with WNOHANG only reaps processes that have already exited, so it cannot affect a
-// process that is still running.
+// @details wait4 with WNOHANG reaps only processes that have already exited, so it cannot affect a running process. It can reap an exited child that another goroutine is about to wait on. That wait then fails with ECHILD and loses the exit status.
 //
 // @return Number of children reaped.
 func reapOnce() int {

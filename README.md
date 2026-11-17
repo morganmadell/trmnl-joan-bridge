@@ -73,7 +73,7 @@ docker run -d --name trmnl-joan-bridge \
 
 > That `ghcr.io/<your-fork>/...` tag assumes a published image already exists. This code has been on `main` since 2026-08-31 and CI builds and pushes `main` to `ghcr.io`, so an image likely exists — but see the `--pull` note above about GHCR package visibility before relying on it. `./deploy.sh` (without `--pull`) builds and runs locally either way.
 
-`--restart unless-stopped` matters here more than on a typical container. As of 2026-08-31, the bridge has an unresolved, intermittent crash (`ExitCode 2`, a Go unhandled panic, no trace captured in `docker logs` yet) that shows up within seconds of a real device connection or image ACK. This flag makes Docker bring the container back up within a couple of seconds of any such crash, instead of leaving the panel unable to reach it until someone notices. It does not fix the underlying bug — see TODO.md's "Known unverified or risky areas" for the current state of that investigation.
+`--restart unless-stopped` brings the container back within a couple of seconds if it stops, for example after a WSL2 restart or a rare crash, instead of leaving the panel unable to reach it until someone notices. The recurring outages seen in 2026-08 and 2026-09 were not app crashes. WSL2 was stopping the whole distro (see "Running on Windows via WSL2" below, and TODO.md's "Known unverified or risky areas").
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -159,6 +159,10 @@ Initial testing runs the bridge on the Windows machine itself, inside WSL2 (thro
    Run the `portproxy add` command again, with the new WSL IP, any time the WSL2 VM's internal address changes — for example, after a reboot. In NAT mode, this address is not guaranteed to stay stable across restarts.
 
 Either way, confirm reachability from another device on `Turing-Corp` (or from the Windows host's own LAN-facing IP). Do this before you assume the Joan-6 panel's failure to connect is a bridge or protocol problem. It can simply be a networking problem instead.
+
+### Keep a WSL2 client attached
+
+WSL2 stops a whole distro (and every container in it) when the last `wsl.exe` client disconnects, even while services run inside. `vmIdleTimeout=-1` in `.wslconfig` does not prevent this, because it covers only the shared utility VM. A bridge that runs for days needs one persistent client, for example a hidden window that runs `wsl -d Ubuntu -u root -- sleep infinity` and restarts it if it exits. This project starts it at logon from a shortcut in the Startup folder. A Windows Scheduled Task did not launch it reliably on the managed machine used here. A sign-out or reboot ends the client, and the next logon starts it again. A screen lock does not.
 
 ## Shared configuration (both modes)
 

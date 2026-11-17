@@ -53,7 +53,7 @@ type Telemetry struct {
 
 // @brief Joan's status heartbeat, sent about every 3 minutes.
 //
-// @details Telemetry is nil when the hello has no recognized telemetry keys.
+// @details Telemetry is nil unless the hello carries all three keys: voltage, RSSI, and battery percent.
 type Hello struct{ Telemetry *Telemetry }
 
 // @brief A single screen tap with raw panel coordinates.
@@ -77,7 +77,7 @@ func (Unknown) isMessage()  {}
 // @details Reading whole messages keeps the reader in sync with Joan.
 //
 // @param r Source of bytes. Set deadlines on the underlying connection before the call.
-// @return The message, or an error for a short header, a desynced length, or a truncated body.
+// @return The message, or an I/O error (EOF, timeout, short read), or an error for a body length above 4096. The header magic and CRC are not checked.
 func ReadMessage(r io.Reader) (Message, error) {
 	h := make([]byte, headerLen)
 	if _, err := io.ReadFull(r, h); err != nil {
@@ -131,7 +131,7 @@ func isTouch(body []byte) bool {
 
 // @brief Read the battery, RSSI, and charge values from a hello body.
 //
-// @details Walks the key-value list until the end sentinel. Does no range check: the caller that
+// @details Walks the key-value list until the 0xffffffff sentinel, a key above 0x200, or the end of the body. A repeated key keeps its last value. Does no range check: the caller that
 // forwards to TRMNL does that.
 //
 // @param body Hello body.

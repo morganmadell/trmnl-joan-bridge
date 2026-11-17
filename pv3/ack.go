@@ -1,6 +1,6 @@
 package pv3
 
-// @brief The fixed 84-byte reply to a Joan hello.
+// @brief The fixed 84-byte reply to a Joan message (hello or tap).
 //
 // @details It (re)establishes the session before any frame is pushed and carries the device UUID and
 // display parameters. The CRC is pre-computed. The constant is decoded once at init and panics when
