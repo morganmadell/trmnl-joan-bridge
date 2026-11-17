@@ -180,6 +180,37 @@ WSL2 stops a whole distro (and every container in it) when the last `wsl.exe` cl
 
 **Re-measuring zones after a layout change.** [`bridge/tools/measure_zones.ps1`](tools/measure_zones.ps1) formalizes the technique above for finding the touch-zone y-boundaries: it pixel-scans a real screenshot for text-block boundaries using a luminance threshold, and prints the resulting y-ranges as candidate zone boundaries. Point its `-ImagePath` parameter at a real `DEBUG_SAVE_SCREENSHOTS` capture — the actual frame that was pushed to and ACKed by the physical panel — not a fresh, unrelated render, since layout can shift between renders (card order, entity state, HA frontend version). Use `bridge/zones.example.json` as the structural template for the resulting `zones.json`.
 
+## After each Home Assistant upgrade
+
+A Home Assistant upgrade can change the frontend. Then `kioskModeJS` can stop hiding the sidebar, or the cards can move so that a label is no longer in its tap zone. Run the render check after each upgrade. It renders every page in `zones.json` once, writes `<page>.png` to a directory, checks each page, and exits. It does not call Home Assistant services and does not open port 11112, so you can run it while the live bridge runs.
+
+Run these commands in the directory that holds `.env` and `zones.json` (the directory where you run `deploy.sh`). The deployed image already has the check:
+
+```bash
+docker run --rm --init --env-file .env -e DEBUG_SAVE_SCREENSHOTS= \
+  -v "$(pwd)/zones.json:/app/zones.json:ro" -v "$(pwd)/render-check:/out" \
+  trmnl-joan-bridge -render-check /out
+```
+
+To test the current source without a change to the deployed image, build a separate tag, run the same command with `trmnl-joan-bridge:render-check` in place of `trmnl-joan-bridge`, and then remove the tag:
+
+```bash
+docker build -t trmnl-joan-bridge:render-check .
+docker rmi trmnl-joan-bridge:render-check
+```
+
+The output has one `PASS` or `FAIL` line for each page, and one line for each failed check. The exit code is 0 when all pages pass and 1 when one or more checks fail. A pixel is ink when its luminance is less than 150, with the same weights and threshold as `tools/measure_zones.ps1`. The check fails when:
+
+- a page does not render, or no dashboard section shows (for example, a login page)
+- the image is not 1024 x 758
+- the left 8 pixels are not blank (the sidebar shows again)
+- a zone is not fully inside the image
+- a zone has no ink (its label is missing)
+- the top row or the bottom row of a zone has ink (a label crosses a horizontal zone border)
+- the left or right column of a zone has ink, where that column is a border with another zone (the outer panel edges are not checked)
+
+Look at the PNG files too. The check does not find all problems. A shift of exactly one row pitch (about 88 pixels) moves each label into the next zone, and the check still passes. The check also does not read the text, so it cannot see which label is in which zone. If the check fails, or a PNG looks wrong, measure the zones again (see "Re-measuring zones after a layout change" above).
+
 ## Building from source
 
 ```bash
@@ -197,7 +228,7 @@ make build-arm     # static linux/arm64 binary → bin/trmnl-joan-bridge
 docker build -t trmnl-joan-bridge .
 ```
 
-> `go build`, `go vet`, and `go test` pass clean on native Windows and in the `golang:1.26-alpine` container. The Unix-only zombie reaper is in `reap_unix.go`, with a no-op in `reap_other.go`. The HA render-and-auth path and the touch/zone dispatch were verified end-to-end against a real Home Assistant instance and the physical Joan-6 panel. The Docker image has been built and run for a long time now (see "Running on Windows via WSL2" above). See [`PAIRING.md`](PAIRING.md) for the pairing sessions, and the parent project's `TODO.md` and `Claude_Work.md` for the full history.
+> `go build`, `go vet`, and `go test` pass clean on native Windows and in the `golang:1.26-alpine` container. `go test -race` passes in the Debian `golang:1.26` image and runs in CI (the Alpine image has no C compiler, which the race detector needs). The Unix-only zombie reaper is in `reap_unix.go`, with a no-op in `reap_other.go`. The HA render-and-auth path and the touch/zone dispatch were verified end-to-end against a real Home Assistant instance and the physical Joan-6 panel. The Docker image has been built and run for a long time now (see "Running on Windows via WSL2" above). See [`PAIRING.md`](PAIRING.md) for the pairing sessions, and the parent project's `TODO.md` and `Claude_Work.md` for the full history.
 
 ### Tests
 
@@ -208,11 +239,12 @@ Unit tests are in `*_test.go` (package `main`) and in `pv3/`. They need no netwo
 | `ha_zones_test.go` | `loadZoneConfig` (valid file, missing file, a directory in place of the file, bad JSON, missing name or path, no pages), `pageByName`, `hit` |
 | `ha_client_test.go` | `callService` (request shape, error status), `currentPage` fallback, `onTouch` (180-degree flip, no-zone tap, service call), `backoff` |
 | `ha_render_test.go` | `hassTokensJS` (the token must be a JS string literal that holds JSON), `kioskModeJS` (no format artifacts), `leftStripBlank` |
+| `render_check_test.go` | `checkRender` on synthetic images (ink inside the zones, empty zone, ink on the top row, bottom row, or an interior vertical edge, ink on an outer edge, wrong image size, zone out of bounds, dark left strip), the ink threshold |
 | `main_test.go` | `frameStore`, `serve` (full push, partial push, ACK only, touch, telemetry), `deviceStatus`, `env` helpers, `rewriteHost` |
-| `trmnl_test.go` | TRMNL mode: `refresh` (headers, frame, refresh rate, error status), `pollInterval` |
+| `trmnl_test.go` | TRMNL mode: `refresh` (headers, frame, refresh rate, error status), `pollInterval`, and `refresh` and `pollInterval` at the same time (fails under `-race` if the refresh-rate read loses its lock) |
 | `reap_unix_test.go` | `reapOnce` reaps an exited child (Unix only) |
 | `tools/test_doxygen_go_filter.py` | The Doxygen filter. Run: `python -m unittest tools/test_doxygen_go_filter.py` (also in CI) |
-| `tools/pair_device.Tests.ps1` | `Read-SerialResponse` and `Send-Command` against a fake serial port. Run: `Invoke-Pester tools/pair_device.Tests.ps1` |
+| `tools/pair_device.Tests.ps1` | `Read-SerialResponse` and `Send-Command` against a fake serial port. Runs on Pester 3.4 (Windows PowerShell 5.1) and Pester 5 (pwsh), and in CI. Run: `Invoke-Pester tools/pair_device.Tests.ps1` |
 | `pv3/*_test.go` | Message decode, full frame encode (golden pre-header), partial update round trip and fallbacks |
 
 When a bug is found that a test could have caught, add the test in the same change. Tests added this way so far: the `hassTokens` string-literal bug, the Docker directory-in-place-of-`zones.json` failure, and the coordinate flip.
@@ -241,6 +273,7 @@ ha_client.go     Home Assistant content source: page state, tap routing, HA serv
 ha_render.go     Headless-Chromium screenshot (via chromedp/CDP): HA auth
                  injection + kiosk-mode chrome hiding
 ha_zones.go      zones.json (page/tap-zone config) loading and hit-testing
+render_check.go  -render-check: render every page once and check it against zones.json
 reap_unix.go     Zombie-process reaper (Unix only; reap_other.go is the no-op for other systems)
 zones.example.json  Starting-point zone config matching the parent project's 3-page dashboard
 *_test.go        Unit tests (see "Tests" above)

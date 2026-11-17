@@ -1,0 +1,8 @@
+# Keep secrets and local output out of the Docker build context.
+.env
+.env.*
+debug-screenshots/
+captures/
+exploration/
+bin/
+docs/api/

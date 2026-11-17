@@ -82,7 +82,13 @@ func main() {
 
 	refresh := flag.Duration("refresh", envDuration("REFRESH_INTERVAL", 60*time.Second), "Fallback refresh interval (HA: between unprompted re-renders; TRMNL: when it omits refresh_rate)")
 	addr := flag.String("addr", env("LISTEN_ADDR", ":11112"), "TCP listen address")
+	renderCheck := flag.String("render-check", "", "render every page in zones.json to this directory, check the layout, and exit")
 	flag.Parse()
+
+	// Exit before the listener starts, so a check can run beside the live bridge.
+	if *renderCheck != "" {
+		os.Exit(runRenderCheck(*renderCheck))
+	}
 
 	fc := &frameStore{}
 	st := &deviceStatus{}

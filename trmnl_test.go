@@ -7,6 +7,8 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -52,6 +54,57 @@ func TestTRMNLRefreshStoresFrameAndRate(t *testing.T) {
 	}
 	if got := tc.pollInterval(); got != 120*time.Second {
 		t.Errorf("pollInterval = %v, want 120s from refresh_rate", got)
+	}
+}
+
+// Fails under -race if pollInterval reads fallback without tc.mu while refresh writes it.
+func TestTRMNLRefreshConcurrentPollInterval(t *testing.T) {
+	const refreshes = 10
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatal(err)
+	}
+	var served atomic.Int32
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	mux.HandleFunc("/api/display", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"image_url": "http://umbrel.local/img.png", "refresh_rate": served.Add(1)})
+	})
+	mux.HandleFunc("/img.png", func(w http.ResponseWriter, r *http.Request) { w.Write(buf.Bytes()) })
+
+	tc := &trmnlClient{server: srv.URL, fallback: 60 * time.Second}
+	fc := &frameStore{}
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		defer close(done)
+		for range refreshes {
+			if err := tc.refresh(fc); err != nil {
+				t.Errorf("refresh: %v", err)
+				return
+			}
+		}
+	}()
+	// Read until the writer finishes: a reader that exits before the first write leaves the race
+	// detector no live stack to report against.
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				tc.pollInterval()
+			}
+		}
+	}()
+	wg.Wait()
+
+	if got := tc.pollInterval(); got < time.Second || got > refreshes*time.Second || got%time.Second != 0 {
+		t.Errorf("pollInterval = %v, want a served refresh_rate in 1s..%ds", got, refreshes)
 	}
 }
 

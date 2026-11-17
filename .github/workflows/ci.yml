@@ -41,11 +41,20 @@ jobs:
       - name: go build
         run: go build ./...
 
-      - name: go test
-        run: go test ./...
+      # -race needs cgo; ubuntu-latest has gcc. TestTRMNLRefreshConcurrentPollInterval
+      # fails here if the TRMNL refresh-rate read loses its lock.
+      - name: go test (race detector)
+        run: go test -race ./...
 
       - name: Doxygen filter tests
         run: python3 -m unittest tools/test_doxygen_go_filter.py
+
+      # Pester 5 is preinstalled on ubuntu-latest. The test file also runs on Pester 3.4.
+      - name: Pester tests (pair_device.ps1)
+        shell: pwsh
+        run: |
+          Import-Module Pester -MinimumVersion 5.5
+          Invoke-Pester tools/pair_device.Tests.ps1 -CI
 
   build:
     needs: test
